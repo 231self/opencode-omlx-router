@@ -41,7 +41,9 @@ Artifacts:
 2. Move the `CHANGELOG.md` section from `unreleased` to the release version.
 3. Update README install/usage if behaviour changed.
 4. `bun run check`.
-5. `jj describe -m "release: v0.1.0"`, `jj new`.
+5. `bun run test:e2e` (prompt tests against OpenCode and Kilo) and, with oMLX
+   running, `bun run test:e2e:live` (real judge).
+6. `jj describe -m "release: v0.1.0"`, `jj new`.
 
 ## Publish to npm
 

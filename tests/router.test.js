@@ -207,7 +207,7 @@ test("detects a user model override and forces the pin", async () => {
 test("context hook stores the token estimate", async () => {
   const env = tempEnv()
   const { router } = harness({ env, sessionModel: null, core: { route: () => decisionResponse() } })
-  router.context({
+  await router.context({
     sessionID: "ses_1",
     system: [{ type: "text", text: "system prompt" }],
     messages: [{ parts: [{ type: "text", text: "hello world" }] }],
@@ -243,7 +243,7 @@ test("compaction clears the pin", async () => {
   expect(readPin("opencode", "ses_1", env)).toBeUndefined()
 })
 
-test("context hook applies the optimiser plan and records the result", () => {
+test("context hook applies the optimiser plan and records the result", async () => {
   const env = tempEnv()
   const core = {
     route: () => decisionResponse(),
@@ -254,7 +254,7 @@ test("context hook applies the optimiser plan and records the result", () => {
   }
   const { router } = harness({ env, sessionModel: null, core })
   const messages = [{ info: { role: "assistant" }, parts: [{ type: "tool", tool: "read", state: { status: "completed", output: "huge output" } }] }]
-  router.context({
+  await router.context({
     sessionID: "ses_1",
     model: { providerID: "deepseek", id: "deepseek-flash", limit: { context: 100000, output: 8192 } },
     system: [],
@@ -266,7 +266,7 @@ test("context hook applies the optimiser plan and records the result", () => {
   expect(pin.lastOptimiser.overflow).toBe(false)
 })
 
-test("context overflow breaks the pin without pruning", () => {
+test("context overflow breaks the pin without pruning", async () => {
   const env = tempEnv()
   const core = {
     route: () => decisionResponse(),
@@ -278,7 +278,7 @@ test("context overflow breaks the pin without pruning", () => {
   const { router } = harness({ env, sessionModel: null, core })
   writePin("opencode", "ses_1", { model: { providerID: "deepseek", id: "deepseek-flash" } }, env)
   const messages = [{ parts: [] }]
-  router.context({
+  await router.context({
     sessionID: "ses_1",
     model: { providerID: "deepseek", id: "deepseek-flash", limit: { context: 100000, output: 8192 } },
     system: [],
@@ -287,4 +287,88 @@ test("context overflow breaks the pin without pruning", () => {
   const pin = readPin("opencode", "ses_1", env)
   expect(pin.model).toBeUndefined()
   expect(pin.lastContextTokens).toBe(500000)
+})
+
+test("context hook resolves catalog limits when the event model omits them", async () => {
+  const env = tempEnv()
+  const seen = []
+  const core = {
+    route: () => decisionResponse(),
+    optimise: (input) => {
+      seen.push(input.model)
+      return { plan: [], stats: { beforeTokens: 900, afterTokens: 900, partsPruned: 0, overflow: false } }
+    },
+  }
+  const { router } = harness({ env, sessionModel: null, core })
+  writePin("opencode", "ses_1", { model: { providerID: "deepseek", id: "deepseek-flash" } }, env)
+  await router.context({
+    sessionID: "ses_1",
+    model: { providerID: "deepseek", id: "deepseek-flash" },
+    system: [],
+    messages: [{ parts: [] }],
+  })
+  expect(seen[0].limit.context).toBe(262144)
+  expect(readPin("opencode", "ses_1", env).model.id).toBe("deepseek-flash")
+})
+
+test("a context write cannot clobber a newer routing pin", async () => {
+  const env = tempEnv()
+  const core = {
+    route: () => decisionResponse(),
+    optimise: () => {
+      // Simulate the prompt hook writing a new decision while the context hook
+      // is measuring (the two hooks are asynchronous in the host).
+      writePin("opencode", "ses_1", { model: { providerID: "deepseek", id: "deepseek-v4-pro", variant: "default" } }, env)
+      return { plan: [], stats: { beforeTokens: 100, afterTokens: 100, partsPruned: 0, overflow: false } }
+    },
+  }
+  const { router } = harness({ env, sessionModel: null, core })
+  writePin("opencode", "ses_1", { model: { providerID: "deepseek", id: "deepseek-flash" } }, env)
+  await router.context({
+    sessionID: "ses_1",
+    model: { providerID: "deepseek", id: "deepseek-flash", limit: { context: 262144, output: 8192 } },
+    system: [],
+    messages: [{ parts: [] }],
+  })
+  expect(readPin("opencode", "ses_1", env).model.id).toBe("deepseek-v4-pro")
+})
+
+test("a rejected switch is recorded as not applied and keeps the old pin", async () => {
+  const env = tempEnv()
+  const core = { route: () => decisionResponse() }
+  const switches = []
+  const ctx = {
+    session: {
+      get: async () => ({ id: "ses_1", agent: "build", model: { providerID: "opencode", id: "iceman-free" } }),
+      switchModel: async ({ model }) => {
+        switches.push(model)
+        throw new Error("host refused the model")
+      },
+    },
+    agent: { get: async () => ({ id: "build", mode: "primary" }) },
+    model: { list: async () => MODELS },
+    provider: { list: async () => [] },
+  }
+  const router = new Router({ ctx, env, core, host: "opencode" })
+  await router.prompt({ sessionID: "ses_1", prompt: { text: "implement it", files: [] } })
+  const [decision] = readDecisions("opencode", 1, env)
+  expect(switches).toHaveLength(1)
+  expect(decision.applied).toBe("none")
+  expect(decision.error).toContain("host refused")
+  expect(readPin("opencode", "ses_1", env).lastApplied.id).toBe("iceman-free")
+})
+
+test("prompt write preserves context state written while routing", async () => {
+  const env = tempEnv()
+  const core = {
+    route: () => {
+      writePin("opencode", "ses_1", { lastContextTokens: 123 }, env)
+      return decisionResponse()
+    },
+  }
+  const { router } = harness({ env, sessionModel: null, core })
+  await router.prompt({ sessionID: "ses_1", prompt: { text: "implement it", files: [] } })
+  const pin = readPin("opencode", "ses_1", env)
+  expect(pin.model.id).toBe("deepseek-flash")
+  expect(pin.lastContextTokens).toBe(123)
 })

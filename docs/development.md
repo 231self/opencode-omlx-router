@@ -147,9 +147,42 @@ gate is 600 KiB; the current artifact is ~370 KiB.
    available), and failure signals to `router.toolAfter`.
 4. Add a host tag to the decision log and tests with a fake client.
 
+## Prompt tests (2026-11-15)
+
+`bun run test:e2e` starts real OpenCode V2 and Kilo sessions while a local judge
+stub answers the router's verdict request. Each step asserts the decision record
+and the model exported from the host session. See
+[`tests/e2e/README.md`](../tests/e2e/README.md) for the scenario table.
+
+Results on OpenCode 2.3.0 / Kilo 7.6.2 / DeepSeek Flash + Pro:
+
+- 13 stub scenarios, 18 steps, all passing.
+- Same-turn switching, cost/quality/latency policies, pin threshold, upward
+  complexity jump, forced user override, subagent `explore` policy, judge
+  timeout/HTTP fallback, malformed-verdict retry, disabled mode, and Kilo
+  boundary semantics are all checked against the host's actual assistant model.
+- `bun run test:e2e:live` routed a planning prompt through the real oMLX 27B
+  judge: verdict complexity 4 in **8.9 s**, chosen `deepseek/deepseek-v4-pro`
+  under cost policy with the quality floor, `applied: "same-turn"`.
+
+The first run exposed four bugs that fake-based unit tests missed:
+
+- The V2 `context` event has `{providerID, id}` but no limits, so the optimiser
+  saw zero context, returned `overflow` on every turn, and cleared the pin.
+  `Router.modelFor` now fills the catalog entry.
+- Context and prompt hooks write the same pin asynchronously; a context write
+  could erase a newly chosen model. Both writers now merge with the latest pin,
+  and context refuses to overwrite a newer model.
+- Pin policy counted a downward complexity change as a jump and could report a
+  switch while staying on the same model. Only upward jumps force a switch;
+  same-model selections keep the pin.
+- A rejected `switchModel` was logged as applied. It is now `applied: "none"`
+  with the error and the previous model in `lastApplied`.
+
 ## Release checklist
 
 - `bun run check` green.
+- `bun run test:e2e` green against the current OpenCode and Kilo versions.
 - README install steps match the published package name.
 - `npm pack --dry-run` includes `dist/core.wasm`, `src`, `bin`, `README.md`,
   `LICENSE`, `config.example.json`.

@@ -60,7 +60,10 @@ Modules:
 6. Core gates/scorers/pins and returns the chosen model.
 7. Adapter calls `switchModel`, writes the pin, decision record, and stats.
 8. Same turn, the `context` hook calls the optimiser and applies the plan; the
-   resulting token total feeds the next routing decision.
+   resulting token total feeds the next routing decision. The V2 context event
+   carries only `providerID`/`id`, so the adapter resolves limits from the live
+   catalog before measuring. Context writes merge with the latest pin and never
+   overwrite a model chosen by a concurrent prompt hook.
 
 ## Subagents
 

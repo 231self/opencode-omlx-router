@@ -462,7 +462,13 @@ bun run build:wasm     # cargo build --target wasm32-unknown-unknown --release
 bun test               # adapter + WASM bridge tests
 bun run test:rust      # cargo test
 bun run check          # fmt, clippy, tests, size gate
+bun run test:e2e       # live prompt tests against OpenCode + Kilo (needs oMLX)
+bun run test:e2e:live  # one prompt through the real oMLX judge
 ```
+
+The prompt tests start real OpenCode/Kilo sessions, inject a deterministic
+judge, and assert both the decision record and the model each host actually
+used. See [tests/e2e/README.md](tests/e2e/README.md).
 
 The repository uses [jj](https://github.com/jj-vcs/jj) on top of git
 (colocated). Conventional commits, `main` is the release bookmark.

@@ -100,6 +100,8 @@ export class Router {
   }
 
   async catalog() {
+    const now = Date.now()
+    if (this.catalogCache && now - this.catalogCache.at < 2000) return this.catalogCache.value
     let models = []
     let providers = []
     try {
@@ -114,7 +116,26 @@ export class Router {
     } catch {
       providers = []
     }
-    return { models, providers }
+    const value = { models, providers }
+    this.catalogCache = { at: now, value }
+    return value
+  }
+
+  /**
+   * The V2 context hook reports only provider/id, not limits or prices. Fill in
+   * the catalog entry so the optimiser sees the real context budget instead of
+   * treating every turn as an overflow.
+   */
+  async modelFor(contextModel) {
+    if (!contextModel) return null
+    if (Number(contextModel.limit?.context) > 0) return contextModel
+    const { models } = await this.catalog()
+    const found = models.find(
+      (model) =>
+        String(model?.providerID) === String(contextModel.providerID) &&
+        String(model?.id ?? model?.modelID) === String(contextModel.id),
+    )
+    return found ? { ...found, providerID: found.providerID, id: found.id ?? found.modelID } : contextModel
   }
 
   async prompt(event) {
@@ -222,7 +243,14 @@ export class Router {
         lastApplied: applied,
         lastContextTokens,
       }
-      if (nextPin.model) writePin(this.host, sessionID, nextPin, this.env)
+      if (nextPin.model) {
+        // The context hook also writes this file. Merge with the latest pin so
+        // a concurrent context write cannot drop the model or routing state.
+        const latest = readPin(this.host, sessionID, this.env) ?? {}
+        const merged = { ...latest, ...nextPin }
+        if (!nextPin.lastContextTokens) merged.lastContextTokens = Number(latest.lastContextTokens) || 0
+        writePin(this.host, sessionID, merged, this.env)
+      }
       if (result.state) writeStats(this.host, result.state, this.env)
       this.record(result, config, { switched, switchError, judgeMs })
     } catch (error) {
@@ -236,7 +264,7 @@ export class Router {
     if (log.reason === "disabled" || log.reason === "subagents_disabled") return
     const record = {
       ...log,
-      applied: result.action === "decide" ? this.appliedMode : "none",
+      applied: result.action === "decide" ? (extra.switchError ? "none" : this.appliedMode) : "none",
       error: extra.switchError ?? null,
       judge: {
         ...(log.judge ?? {}),
@@ -266,18 +294,19 @@ export class Router {
     }
   }
 
-  context(event) {
+  async context(event) {
     try {
       const sessionID = event?.sessionID
       if (!sessionID) return
       const config = this.config()
-      let pin = readPin(this.host, sessionID, this.env) ?? {}
+      const model = await this.modelFor(event?.model)
       let tokens = null
       let optimiser = null
+      let overflow = false
 
-      if (config.optimiser?.enabled !== false && this.core?.optimise && event?.model) {
+      if (config.optimiser?.enabled !== false && this.core?.optimise && model) {
         const request = buildOptimiseRequest({
-          model: event.model,
+          model,
           config,
           system: event.system,
           messages: event.messages,
@@ -286,8 +315,7 @@ export class Router {
         if (result?.stats) {
           optimiser = result.stats
           if (result.stats.overflow) {
-            clearPin(this.host, sessionID, this.env)
-            pin = {}
+            overflow = true
             tokens = Number(result.stats.beforeTokens) || 0
           } else {
             applyPlan(event.messages, result.plan)
@@ -297,7 +325,18 @@ export class Router {
       }
 
       if (tokens == null) tokens = countContextTokens(event)
-      writePin(this.host, sessionID, { ...pin, lastContextTokens: tokens, lastOptimiser: optimiser }, this.env)
+      const latest = readPin(this.host, sessionID, this.env) ?? {}
+      const target = refOf(model)
+      // A newer prompt may have chosen a different model while this hook was
+      // measuring. Never overwrite that decision with stale context state.
+      if (latest.model && target && !sameModel(latest.model, target)) return
+      if (overflow) clearPin(this.host, sessionID, this.env)
+      writePin(
+        this.host,
+        sessionID,
+        { ...(overflow ? {} : latest), lastContextTokens: tokens, lastOptimiser: optimiser },
+        this.env,
+      )
     } catch {
       // A failed measurement or prune must never break a turn.
     }

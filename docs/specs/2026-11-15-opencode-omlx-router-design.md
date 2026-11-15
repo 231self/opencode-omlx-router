@@ -400,8 +400,12 @@ Pin state per session:
 
 - Keep when the pin clears gates, `best − pinned ≤ pin.switchThreshold` (0.12),
   the turn class is unchanged, idle < `pin.idleTtlMs` (5 min), and not forced.
-- Hard switch on gate failure, complexity jump ≥ 2, loop escalation, context
-  overflow, policy change, or pin expiry.
+- Hard switch on gate failure, an **upward** complexity jump ≥ 2, loop
+  escalation, context overflow, policy change, or pin expiry. A downward jump is
+  a normal de-escalation governed by the threshold.
+- If the incumbent is still the best candidate, the pin is refreshed and the
+  decision is recorded as pinned, not as a switch (this also applies to idle TTL
+  and same-model selections).
 - Flip-flop guard: never switch to a model used in the last `pin.flipFlopTurns`
   (3) turns.
 - User override: `session.model != lastApplied` at prompt time ⇒ forced pin,
@@ -418,6 +422,10 @@ Pin state per session:
 - Token estimate: text `ceil(chars/4)` ASCII-weighted, CJK `chars/1.6`, images
   1500 each, tool output like text.
 - Under budget ⇒ **no change** (idempotent, cache-safe).
+- OpenCode V2's `context` event carries only `providerID`/`id`; the adapter
+  resolves the catalog entry to obtain limits before measuring. Context writes
+  read the latest pin at write time and never overwrite a model chosen by a
+  concurrent prompt hook.
 - Over budget, in order: dedupe identical tool outputs (keep newest) → truncate
   outputs above `maxToolTokens` (2000) to 60% head / 40% tail with marker →
   stub outputs older than the last `keepRecentToolOutputs` (3), largest first,

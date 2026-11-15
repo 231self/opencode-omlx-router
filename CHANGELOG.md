@@ -15,6 +15,11 @@ First release candidate.
 - Judge provisioning with explicit consent: TUI/CLI offer, model metadata and
   size before confirmation, oMLX admin download, progress, cancel, and
   post-download verification. Never downloads automatically.
+- Live prompt tests (`tests/e2e`) for OpenCode V2 and Kilo: deterministic judge
+  stub, multi-turn pin/threshold/jump/override scenarios, subagent policy,
+  judge failure and malformed-output fallbacks, disabled mode, Kilo boundary
+  semantics, and a real-oMLX judge smoke test. Each step asserts the decision
+  record and the model the host actually used.
 - Pool sources: host favorites (default), explicit list, all available models;
   include/exclude globs; tool, context, and status filters; local-model guard.
 - Policies: cost-first (default), quality-first, latency-first, with per-agent
@@ -33,6 +38,19 @@ First release candidate.
 - `omlx-router` CLI: status, config get/set, history, doctor, pool.
 - Apache-2.0 license, CI (rustfmt, clippy, Rust tests, wasm build, Bun tests,
   wasm size gate), and user documentation.
+
+### Fixed
+
+- The OpenCode V2 context hook only reports a model's provider and id. The
+  adapter now fills in limits from the live catalog, so the optimiser no longer
+  sees zero context and reports a false overflow on every turn.
+- Context-hook state writes no longer overwrite a routing pin written by a
+  concurrent prompt hook. Cache-aware pinning now survives turns with tool use.
+- Pin policy: a downward complexity change no longer counts as a jump, a
+  selection that stays on the incumbent is no longer recorded as a switch, and
+  idle TTL only switches when a different model is actually best.
+- A rejected `switchModel` call is recorded with `applied: "none"` and the
+  error, instead of claiming the decision was applied.
 
 ### Notes
 

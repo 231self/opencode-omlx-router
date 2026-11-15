@@ -176,11 +176,35 @@ pub fn select(
             switched = true;
         }
         Some(current) => {
+            // The incumbent is still the best candidate: refresh the pin. This
+            // also covers a complexity drop and an idle TTL, neither of which
+            // should be reported as a switch when the model does not change.
+            if best
+                .model
+                .reference()
+                .same_model(&current.model.reference())
+            {
+                state.last_turn_at = now;
+                state.last_turn_class = envelope.turn_class.clone();
+                state.last_complexity = verdict.complexity;
+                return Selection {
+                    chosen: current.model.reference(),
+                    pinned: true,
+                    source: "pin".to_string(),
+                    reason: "pin-kept".to_string(),
+                    top: top_candidates(candidates, &current.model.reference(), 3),
+                    pin: state,
+                    switched,
+                };
+            }
+
             let idle = settings.pin.idle_ttl_ms > 0.0
                 && state.last_turn_at > 0.0
                 && now - state.last_turn_at > settings.pin.idle_ttl_ms;
+            // Only an upward jump forces a switch. A simpler follow-up turn
+            // should be able to de-escalate through the normal threshold.
             let jump = state.last_complexity > 0
-                && verdict.complexity.abs_diff(state.last_complexity) >= 2;
+                && verdict.complexity >= state.last_complexity.saturating_add(2);
             let delta = best.score - current.score;
             let challenger_blocked = is_blocked(&state, &best.model.reference(), turnover);
             let keep = !idle && !jump && delta <= settings.pin.switch_threshold;
@@ -192,11 +216,7 @@ pub fn select(
                     chosen: current.model.reference(),
                     pinned: true,
                     source: "pin".to_string(),
-                    reason: if jump {
-                        "jump-kept".to_string()
-                    } else {
-                        "pin-kept".to_string()
-                    },
+                    reason: "pin-kept".to_string(),
                     top: top_candidates(candidates, &current.model.reference(), 3),
                     pin: state,
                     switched,
@@ -498,6 +518,96 @@ mod tests {
         );
         assert_eq!(selection.chosen.id, reference.id);
         assert!(selection.pin.forced);
+    }
+
+    #[test]
+    fn a_downward_complexity_drop_keeps_the_best_incumbent() {
+        let candidates = vec![
+            candidate("a", 0.90, 0.7, 1.0),
+            candidate("b", 0.40, 0.7, 2.0),
+        ];
+        let pin = Pin {
+            model: Some(candidates[0].model.reference()),
+            since: 900.0,
+            last_turn_at: 950.0,
+            last_turn_class: "agentic".to_string(),
+            last_complexity: 5,
+            ..Pin::default()
+        };
+        let selection = select(
+            &candidates,
+            &envelope(),
+            &verdict(1),
+            &settings(),
+            Some(&pin),
+            1000.0,
+            "triage",
+            Mode::Decide,
+        );
+        assert_eq!(selection.chosen.id, "a");
+        assert!(selection.pinned);
+        assert!(!selection.switched);
+        assert_eq!(selection.reason, "pin-kept");
+        assert_eq!(selection.source, "pin");
+    }
+
+    #[test]
+    fn an_upward_complexity_jump_forces_a_switch() {
+        let candidates = vec![
+            candidate("a", 0.80, 0.7, 1.0),
+            candidate("b", 0.85, 0.7, 2.0),
+        ];
+        let pin = Pin {
+            model: Some(candidates[0].model.reference()),
+            since: 900.0,
+            last_turn_at: 950.0,
+            last_turn_class: "routine".to_string(),
+            last_complexity: 1,
+            ..Pin::default()
+        };
+        let selection = select(
+            &candidates,
+            &envelope(),
+            &verdict(3),
+            &settings(),
+            Some(&pin),
+            1000.0,
+            "judge",
+            Mode::Decide,
+        );
+        assert_eq!(selection.chosen.id, "b");
+        assert!(selection.switched);
+        assert_eq!(selection.reason, "complexity-jump");
+    }
+
+    #[test]
+    fn idle_ttl_keeps_the_best_incumbent_without_a_switch() {
+        let candidates = vec![
+            candidate("a", 0.90, 0.7, 1.0),
+            candidate("b", 0.40, 0.7, 2.0),
+        ];
+        let pin = Pin {
+            model: Some(candidates[0].model.reference()),
+            since: 0.0,
+            last_turn_at: 0.0,
+            last_turn_class: "routine".to_string(),
+            last_complexity: 2,
+            ..Pin::default()
+        };
+        let selection = select(
+            &candidates,
+            &envelope(),
+            &verdict(2),
+            &settings(),
+            Some(&pin),
+            10_000_000.0,
+            "judge",
+            Mode::Decide,
+        );
+        assert_eq!(selection.chosen.id, "a");
+        assert!(selection.pinned);
+        assert!(!selection.switched);
+        assert_eq!(selection.reason, "pin-kept");
     }
 
     #[test]
