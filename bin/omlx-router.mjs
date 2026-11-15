@@ -1,5 +1,14 @@
 #!/usr/bin/env node
+import { createInterface } from "node:readline/promises"
+
 import { configPath, getConfigValue, readConfig, saveConfig, setConfigValue } from "../src/config.js"
+import { Judge } from "../src/judge.js"
+import {
+  Provisioner,
+  confirmThenPull,
+  formatBytes,
+  judgeAvailability,
+} from "../src/provision.js"
 import { buildStatus, formatStatus } from "../src/status.js"
 import { readDecisions } from "../src/state.js"
 import { VERSION } from "../src/version.js"
@@ -23,7 +32,8 @@ function hasFlag(args, name) {
 const [hostFlag, withoutHost] = takeFlag(argv, "--host")
 const host = hostFlag || process.env.OMLX_ROUTER_HOST || "opencode"
 const [wantsJson, withoutJson] = hasFlag(withoutHost, "--json")
-const [command = "status", ...rest] = withoutJson
+const [assumeYes, withoutYes] = hasFlag(withoutJson, "--yes")
+const [command = "status", ...rest] = withoutYes
 
 function usage() {
   console.log(`omlx-router ${VERSION}
@@ -35,6 +45,10 @@ Usage:
   omlx-router history [n] [--json]
   omlx-router pool
   omlx-router doctor
+  omlx-router judge pull [repo] [--yes]
+  omlx-router judge status
+  omlx-router judge cancel [task]
+  omlx-router judge probe
   omlx-router version
 
 Environment:
@@ -131,6 +145,126 @@ function poolCommand() {
   console.log("note     the live pool is resolved by the host adapter and shown with /router pool")
 }
 
+async function ask(question) {
+  const rl = createInterface({ input: process.stdin, output: process.stdout })
+  try {
+    const answer = await rl.question(question)
+    return /^y(es)?$/i.test(answer.trim())
+  } finally {
+    rl.close()
+  }
+}
+
+function taskLine(task) {
+  const total = Number(task.total_size) || 0
+  const done = Number(task.downloaded_size) || 0
+  const percent = total > 0 ? Math.min(100, Math.round((done / total) * 100)) : Number(task.progress) || 0
+  return `${task.repo_id} · ${task.status} · ${percent}% (${formatBytes(done)} / ${formatBytes(total)})`
+}
+
+async function judgeCommand() {
+  const action = rest[0] ?? "status"
+  const { config } = readConfig({ write: true })
+  const provision = new Provisioner({ config })
+
+  if (action === "status") {
+    const tasks = await provision.tasks()
+    if (tasks.length === 0) {
+      console.log("no judge downloads")
+      return
+    }
+    for (const task of tasks) console.log(taskLine(task))
+    return
+  }
+
+  if (action === "cancel") {
+    const tasks = await provision.tasks()
+    const active = tasks.filter((task) => ["pending", "downloading"].includes(task.status))
+    const target = rest[1] ? tasks.find((task) => task.task_id === rest[1]) : active[0]
+    if (!target) {
+      console.log(rest[1] ? `no task ${rest[1]}` : "no active download")
+      process.exitCode = 1
+      return
+    }
+    await provision.cancel(target.task_id)
+    console.log(`cancelled ${target.repo_id} (${target.task_id})`)
+    return
+  }
+
+  if (action === "probe") {
+    const availability = await judgeAvailability({ config })
+    if (!availability.available) {
+      console.log(`judge unavailable: ${availability.error ?? "no models"}`)
+      process.exitCode = 1
+      return
+    }
+    const judge = new Judge({ config: config.judge })
+    const probe = await judge.probe()
+    console.log(`models   ${probe.models.join(", ")}`)
+    console.log(`selected ${probe.selected}`)
+    console.log(`suitable ${availability.suitable ? "yes" : "no"}`)
+    console.log(`latency  ${probe.ms} ms`)
+    if (probe.sample) console.log(`sample   ${JSON.stringify(probe.sample)}`)
+    return
+  }
+
+  if (action !== "pull") {
+    throw new Error(`unknown judge action: ${action}`)
+  }
+  if (config.judge.provision?.enabled === false) {
+    throw new Error("judge provisioning is disabled (judge.provision.enabled)")
+  }
+
+  const repo = rest.slice(1).find((value) => !value.startsWith("--"))
+  const result = await confirmThenPull({
+    provision,
+    repo,
+    confirm: async (summary) => {
+      console.log(`Model    ${summary.repo}`)
+      if (summary.params) console.log(`Params   ${summary.params}`)
+      console.log(`Weights  ${summary.weightsFormatted}`)
+      console.log(`Download ${summary.sizeFormatted} (all files)`)
+      console.log(`License  ${summary.license}`)
+      console.log(`Source   Hugging Face · MLX: ${summary.mlx ? "yes" : "no"}`)
+      if (assumeYes) return true
+      return ask("Download into oMLX and serve it locally? [y/N] ")
+    },
+  })
+
+  if (!result.approved) {
+    console.log("cancelled")
+    return
+  }
+
+  console.log(`started ${result.task.repo_id} (${result.task.task_id})`)
+  let lastPercent = -1
+  const task = await provision.waitFor(result.task.task_id, {
+    onProgress: (progress) => {
+      const total = Number(progress.total_size) || 0
+      const done = Number(progress.downloaded_size) || 0
+      const percent = total > 0 ? Math.min(100, Math.round((done / total) * 100)) : Number(progress.progress) || 0
+      if (percent !== lastPercent) {
+        lastPercent = percent
+        console.log(`${progress.status.padEnd(11)} ${String(percent).padStart(3)}%  ${formatBytes(done)} / ${formatBytes(total)}`)
+      }
+    },
+  })
+
+  if (task.status !== "completed") {
+    console.error(`download ${task.status}: ${task.error || "no detail"}`)
+    process.exitCode = 1
+    return
+  }
+
+  console.log(`completed ${task.repo_id}`)
+  const availability = await judgeAvailability({ config })
+  if (!availability.available) {
+    console.log("download completed, but oMLX has not advertised a model yet; reload models in the oMLX app")
+    return
+  }
+  console.log(`judge    ${availability.selected}${availability.suitable ? "" : " (larger than the recommended 4B class)"}`)
+}
+
 async function doctorCommand() {
   const { config } = readConfig({ write: false })
   const base = String(config.judge.baseURL).replace(/\/+$/, "")
@@ -154,6 +288,10 @@ async function doctorCommand() {
     console.log(`judge    ${base} -> ${models.length} model(s) in ${elapsed} ms`)
     if (models.length) console.log(`models   ${models.join(", ")}`)
     console.log(`selected ${config.judge.model}`)
+    const availability = await judgeAvailability({ config })
+    if (!availability.suitable) {
+      console.log("hint     no ~4B judge detected; run: omlx-router judge pull")
+    }
   } catch (error) {
     console.log(`judge    ${base} -> ${controller.signal.aborted ? "timeout" : String(error?.message ?? error)}`)
     process.exitCode = 1
@@ -178,6 +316,9 @@ try {
       break
     case "doctor":
       await doctorCommand()
+      break
+    case "judge":
+      await judgeCommand()
       break
     case "version":
     case "--version":

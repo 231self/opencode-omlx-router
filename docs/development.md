@@ -166,3 +166,16 @@ pool resolution (tools, input/output, cost array, variant array). Without this,
 `pool.requireTools` correctly filtered every Kilo model, producing `no_pool`.
 Verified with a packed install: pool of two, decision `applied: "boundary"`,
 chosen model `deepseek/deepseek-flash`.
+
+## Judge provisioning verification (2026-11-15)
+
+Verified against the live oMLX 0.6.4 admin API without starting a large download:
+
+- `POST /admin/api/login` with the main key from `~/.omlx/settings.json` returns
+  the `omlx_admin_session` cookie.
+- `GET /admin/api/hf/model-info?repo_id=mlx-community/Qwen3-4B-Instruct-2507-4bit`
+  returns params 4.0B, ~2.1 GB of files, `license:apache-2.0`, `mlx` tag.
+- `omlx-router judge pull` printed that summary and, after a declined prompt,
+  made **no** download request. `judge status` and consent gating are covered by
+  fake-server tests; the download path uses `/api/hf/download` and
+  `/api/hf/tasks` and triggers oMLX model rediscovery on completion.

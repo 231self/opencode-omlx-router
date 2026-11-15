@@ -13,6 +13,10 @@
 | `opencode-omlx-router` loads but no decisions | `bun run build:wasm` | The package must contain `dist/core.wasm`; rebuilding from source requires cargo |
 | Tool failures never escalate | tool hook registration | V2 supports `execute.after`; Kilo's V1 hook exposes errors only when the host reports them |
 | TUI `/router` missing | OpenCode TUI, not headless | Use `omlx-router` CLI for `opencode run`, Desktop, or Kilo |
+| Judge download says "admin login failed" | Missing/wrong main key | Set `judge.provision.adminApiKey`/`OMLX_ADMIN_API_KEY`; sub-keys cannot download |
+| Download refuses the repo | Not MLX-shaped | Use an `mlx-community/*` repo or set `judge.provision.allowNonMlx` |
+| Download completes but no judge | oMLX has not rediscovered | Reload models in the oMLX app, then `/router judge` |
+| Download is cancelled/stalled | Network or HF gating | Retry; set `judge.provision.hfToken` for gated repos |
 
 ## Logs and evidence
 

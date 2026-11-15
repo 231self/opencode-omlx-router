@@ -24,6 +24,14 @@ export const DEFAULT_CONFIG = {
     timeoutMs: 1500,
     cacheTtlMs: 600000,
     cacheSize: 128,
+    provision: {
+      enabled: true,
+      repo: "mlx-community/Qwen3-4B-Instruct-2507-4bit",
+      adminApiKey: "{env:OMLX_ADMIN_API_KEY}",
+      readSettingsKey: true,
+      hfToken: "{env:HF_TOKEN}",
+      allowNonMlx: false,
+    },
   },
   pin: {
     switchThreshold: 0.12,

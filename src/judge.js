@@ -7,7 +7,7 @@ export class JudgeError extends Error {
   }
 }
 
-function paramBillions(label) {
+export function paramBillions(label) {
   const text = String(label)
   let best = null
   const pattern = /(\d+(?:\.\d+)?)\s*[bB](?![a-zA-Z0-9])/g

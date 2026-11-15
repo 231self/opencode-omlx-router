@@ -1,5 +1,11 @@
 import { readConfig, saveConfig } from "./config.js"
 import { Judge } from "./judge.js"
+import {
+  Provisioner,
+  confirmThenPull,
+  formatBytes,
+  judgeAvailability,
+} from "./provision.js"
 import { resolvePool } from "./pool.js"
 import {
   clearPin,
@@ -74,6 +80,125 @@ function poolLines(config, models, providers) {
   }
   for (const warning of resolved.warnings) lines.push(`warning: ${warning}`)
   return lines.join("\n")
+}
+
+function taskLine(task) {
+  const total = Number(task.total_size) || 0
+  const done = Number(task.downloaded_size) || 0
+  const percent = total > 0 ? Math.min(100, Math.round((done / total) * 100)) : Number(task.progress) || 0
+  return `${task.repo_id} · ${task.status} · ${percent}% (${formatBytes(done)} / ${formatBytes(total)})`
+}
+
+async function offerPull(context, config, repo, reason, background) {
+  const provision = new Provisioner({ config })
+  let result
+  try {
+    result = await confirmThenPull({
+      provision,
+      repo: repo || provision.defaultRepo(),
+      confirm: async (summary) => {
+        const lines = [
+          reason ? `${reason}\n` : "",
+          `Model    ${summary.repo}`,
+          summary.params ? `Params   ${summary.params}` : "",
+          `Weights  ${summary.weightsFormatted}`,
+          `Download ${summary.sizeFormatted} (all files)`,
+          `License  ${summary.license}`,
+          `Source   Hugging Face · MLX: ${summary.mlx ? "yes" : "no"}`,
+          "",
+          "This downloads into oMLX's model directory and is served locally.",
+        ].filter(Boolean)
+        return context.ui.dialog.confirm({
+          title: "Download judge model",
+          message: lines.join("\n"),
+          label: { confirm: "Download", cancel: "Cancel" },
+        })
+      },
+    })
+  } catch (error) {
+    await show(context, `cannot prepare download: ${error?.message ?? error}`)
+    return
+  }
+
+  if (!result.approved) {
+    await context.ui.toast.show({ title: "oMLX Router", message: "download cancelled" })
+    return
+  }
+
+  await context.ui.toast.show({
+    title: "oMLX Router",
+    message: `downloading ${result.summary.repo} (${result.summary.sizeFormatted}); check /router judge status`,
+    variant: "success",
+    duration: 5000,
+  })
+
+  if (background === false) return
+  const taskID = result.task.task_id
+  void provision
+    .waitFor(taskID, {
+      onProgress: (task) => {
+        if (task.status === "completed") {
+          void context.ui.toast.show({
+            title: "oMLX Router",
+            message: `${task.repo_id} downloaded; run /router judge to verify`,
+            variant: "success",
+            duration: 8000,
+          })
+        }
+        if (task.status === "failed" || task.status === "cancelled") {
+          void context.ui.toast.show({
+            title: "oMLX Router",
+            message: `download ${task.status}: ${task.error || "no detail"}`,
+            variant: "error",
+            duration: 8000,
+          })
+        }
+      },
+    })
+    .catch((error) => {
+      void context.ui.toast.show({
+        title: "oMLX Router",
+        message: `download monitor stopped: ${error?.message ?? error}`,
+        variant: "error",
+      })
+    })
+}
+
+async function judgeTasks(context, config) {
+  const provision = new Provisioner({ config })
+  try {
+    const tasks = await provision.tasks()
+    if (tasks.length === 0) {
+      await show(context, "no judge downloads")
+      return
+    }
+    await show(context, tasks.map(taskLine).join("\n"))
+  } catch (error) {
+    await show(context, `cannot read downloads: ${error?.message ?? error}`)
+  }
+}
+
+async function cancelJudgeTask(context, config, taskID) {
+  const provision = new Provisioner({ config })
+  try {
+    const tasks = await provision.tasks()
+    const active = tasks.filter((task) => ["pending", "downloading"].includes(task.status))
+    const target = taskID ? tasks.find((task) => task.task_id === taskID) : active[0]
+    if (!target) {
+      await show(context, taskID ? `no task ${taskID}` : "no active download")
+      return
+    }
+    const approved = await context.ui.dialog.confirm({
+      title: "Cancel download",
+      message: taskLine(target),
+      label: { confirm: "Cancel download", cancel: "Keep" },
+    })
+    if (!approved) return
+    await provision.cancel(target.task_id)
+    await context.ui.toast.show({ title: "oMLX Router", message: "download cancelled", variant: "success" })
+  } catch (error) {
+    await show(context, `cannot cancel download: ${error?.message ?? error}`)
+  }
 }
 
 async function runCommand(context, input) {
@@ -187,6 +312,37 @@ async function runCommand(context, input) {
       return
     }
     case "judge": {
+      const action = rest[0]
+      if (action === "pull") {
+        if (config.judge.provision?.enabled === false) {
+          await show(context, "judge provisioning is disabled in config (judge.provision.enabled)")
+          return
+        }
+        await offerPull(context, config, rest[1], "No suitable judge model is loaded.")
+        return
+      }
+      if (action === "status") {
+        await judgeTasks(context, config)
+        return
+      }
+      if (action === "cancel") {
+        await cancelJudgeTask(context, config, rest[1])
+        return
+      }
+
+      const availability = await judgeAvailability({ config })
+      if (!availability.available || !availability.suitable) {
+        const reason = !availability.available
+          ? `No judge model is available (${availability.error ?? "oMLX returned no models"}).`
+          : `The smallest advertised model is ${availability.selected}, which is larger than the recommended 4B judge.`
+        if (config.judge.provision?.enabled === false) {
+          await show(context, `${reason}\n\nProvisioning is disabled; pull a model in oMLX.`)
+          return
+        }
+        await offerPull(context, config, undefined, reason)
+        return
+      }
+
       const judge = new Judge({ config: config.judge })
       try {
         const probe = await judge.probe()
@@ -224,7 +380,7 @@ async function runCommand(context, input) {
           "/router explain",
           "/router pin [provider/model]",
           "/router auto",
-          "/router judge",
+          "/router judge [pull|status|cancel]",
           "/router subagents on|off",
         ].join("\n"),
       )

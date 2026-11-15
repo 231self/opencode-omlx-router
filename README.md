@@ -150,6 +150,48 @@ models:
 { "judge": { "model": "Qwen3-4B-Instruct-2507-4bit" } }
 ```
 
+### Pull the judge from the plugin (with consent)
+
+The plugin can ask oMLX to download the recommended judge. It **never downloads
+without an explicit confirmation**: you see the repository, parameter count,
+download size, license, and source first.
+
+```text
+/router judge                 # offers the download when no suitable judge exists
+/router judge pull [repo]     # explicit pull, same confirmation
+/router judge status          # progress
+/router judge cancel [task]   # cancel an active download
+```
+
+```sh
+omlx-router judge pull              # prints the summary, asks y/N
+omlx-router judge pull --yes        # skips only the prompt
+omlx-router judge pull mlx-community/Some-Other-4B
+omlx-router judge status
+omlx-router judge cancel
+```
+
+The download uses oMLX's own admin API and its Hugging Face downloader, so the
+model lands in oMLX's model directory and is discovered when complete. It needs
+the oMLX **main** API key (sub-keys cannot administer downloads):
+
+```jsonc
+{
+  "judge": {
+    "provision": {
+      "adminApiKey": "{env:OMLX_ADMIN_API_KEY}",
+      "readSettingsKey": true,
+      "repo": "mlx-community/Qwen3-4B-Instruct-2507-4bit"
+    }
+  }
+}
+```
+
+If `adminApiKey` is unset, the plugin falls back to `auth.api_key` in
+`~/.omlx/settings.json` when `readSettingsKey` is true. The key is only used for
+the local admin login, never logged, and the session cookie stays in memory.
+Non-MLX repositories are rejected unless `allowNonMlx` is set.
+
 Verify with:
 
 ```text
@@ -396,7 +438,9 @@ use the `omlx-router` CLI and `config.json`.
 - The only text that leaves the machine is the truncated turn summary in the
   judge request, sent to the `judge.baseURL` you configure (localhost by
   default).
-- API keys are read from your config/env and never logged.
+- API keys are read from your config/env and never logged. The oMLX admin key
+  may be read from the local `~/.omlx/settings.json` (when allowed) solely for
+  the local download login.
 - State is local: `~/.local/state/omlx-router/<host>/`.
 
 ## Troubleshooting

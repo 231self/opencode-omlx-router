@@ -50,6 +50,21 @@ all available models and emit a warning in `/router pool`.
 | `cacheTtlMs` | `600000` | Verdict cache TTL |
 | `cacheSize` | `128` | LRU entries |
 
+### `judge.provision`
+
+| Key | Default | Notes |
+|---|---|---|
+| `enabled` | `true` | Allows the plugin to *offer* a download; consent is always required |
+| `repo` | `mlx-community/Qwen3-4B-Instruct-2507-4bit` | Recommended judge |
+| `adminApiKey` | `{env:OMLX_ADMIN_API_KEY}` | oMLX main key; sub-keys cannot administer downloads |
+| `readSettingsKey` | `true` | Fall back to `auth.api_key` in `~/.omlx/settings.json` |
+| `hfToken` | `{env:HF_TOKEN}` | Optional, for gated Hugging Face repos |
+| `allowNonMlx` | `false` | Permit repositories that do not look MLX-compatible |
+
+No download starts without a TUI confirmation or a CLI `y` / `--yes`. Downloads
+use oMLX's admin API (`/admin/api/hf/*`), so the model appears in oMLX's model
+directory and is rediscovered on completion. The admin key is never logged.
+
 ## `pin`
 
 | Key | Default | Notes |

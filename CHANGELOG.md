@@ -12,6 +12,9 @@ First release candidate.
   cache-aware pinning, optimiser planning.
 - oMLX small-model judge with automatic smallest-model selection, 1.5 s default
   timeout, LRU verdict cache, repair retry, and deterministic fallback.
+- Judge provisioning with explicit consent: TUI/CLI offer, model metadata and
+  size before confirmation, oMLX admin download, progress, cancel, and
+  post-download verification. Never downloads automatically.
 - Pool sources: host favorites (default), explicit list, all available models;
   include/exclude globs; tool, context, and status filters; local-model guard.
 - Policies: cost-first (default), quality-first, latency-first, with per-agent

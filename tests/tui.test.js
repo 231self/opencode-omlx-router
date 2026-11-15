@@ -4,7 +4,7 @@ import os from "node:os"
 import path from "node:path"
 
 import tui from "../src/tui.js"
-import { readConfig } from "../src/config.js"
+import { readConfig, saveConfig } from "../src/config.js"
 
 function environment() {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "omlx-router-tui-"))
@@ -16,6 +16,7 @@ function environment() {
 function fakeContext() {
   let layer
   const messages = []
+  let confirmAnswer = true
   const context = {
     location: { directory: "/tmp" },
     ui: {
@@ -24,6 +25,7 @@ function fakeContext() {
       dialog: {
         alert: async ({ title, message }) => messages.push({ kind: "alert", title, message }),
         select: async () => "quality",
+        confirm: async () => confirmAnswer,
       },
       toast: { show: async ({ title, message }) => messages.push({ kind: "toast", title, message }) },
     },
@@ -46,7 +48,14 @@ function fakeContext() {
       },
     },
   }
-  return { context, messages, command: () => layer.commands[0] }
+  return {
+    context,
+    messages,
+    command: () => layer.commands[0],
+    setConfirm: (value) => {
+      confirmAnswer = value
+    },
+  }
 }
 
 test("tui exposes the router slash command", () => {
@@ -78,4 +87,82 @@ test("/router status renders a dialog", async () => {
   const alert = messages.find((entry) => entry.kind === "alert")
   expect(alert.message).toContain("opencode-omlx-router")
   expect(alert.message).toContain("policy")
+})
+
+function fakeAdminFetch() {
+  const calls = []
+  const fetchImpl = async (url, init = {}) => {
+    const parsed = new URL(url)
+    calls.push({ path: parsed.pathname, method: init.method ?? "GET" })
+    const json = (value, headers = {}) =>
+      new Response(JSON.stringify(value), { status: 200, headers: { "content-type": "application/json", ...headers } })
+    if (parsed.pathname === "/v1/models") {
+      return json({ data: [{ id: "Qwen3.8-27B-MLX-4bit" }] })
+    }
+    if (parsed.pathname === "/admin/api/login") {
+      return json({ success: true }, { "set-cookie": "omlx_admin_session=abc; Path=/" })
+    }
+    if (parsed.pathname === "/admin/api/hf/model-info") {
+      return json({
+        repo_id: "mlx-community/Qwen3-4B-Instruct-2507-4bit",
+        params_formatted: "4.0B",
+        tags: ["mlx", "license:apache-2.0"],
+        files: [
+          { name: "config.json", size: 1000 },
+          { name: "model.safetensors", size: 2_254_857_830 },
+        ],
+      })
+    }
+    if (parsed.pathname === "/admin/api/hf/download") {
+      return json({ task: { task_id: "t1", repo_id: "mlx-community/Qwen3-4B-Instruct-2507-4bit", status: "pending" } })
+    }
+    if (parsed.pathname === "/admin/api/hf/tasks") {
+      return json({ tasks: [{ task_id: "t1", repo_id: "mlx-community/Qwen3-4B-Instruct-2507-4bit", status: "completed" }] })
+    }
+    return json({ error: "not found" })
+  }
+  return { fetchImpl, calls }
+}
+
+function provisionConfig() {
+  environment()
+  const config = readConfig({ write: true }).config
+  config.judge.baseURL = "http://omlx.test/v1"
+  config.judge.provision.adminApiKey = "admin-key"
+  config.judge.provision.readSettingsKey = false
+  saveConfig(config)
+  return config
+}
+
+test("/router judge offers a consented download when only a large model exists", async () => {
+  provisionConfig()
+  const { context, messages, command } = fakeContext()
+  tui.setup(context)
+  const fake = fakeAdminFetch()
+  const original = globalThis.fetch
+  globalThis.fetch = fake.fetchImpl
+  try {
+    await command().run("judge")
+  } finally {
+    globalThis.fetch = original
+  }
+  expect(fake.calls.some((call) => call.path === "/admin/api/hf/model-info")).toBe(true)
+  expect(fake.calls.some((call) => call.path === "/admin/api/hf/download" && call.method === "POST")).toBe(true)
+  expect(messages.some((entry) => String(entry.message).includes("downloading"))).toBe(true)
+})
+
+test("/router judge pull does not download when consent is declined", async () => {
+  provisionConfig()
+  const { context, command, setConfirm } = fakeContext()
+  setConfirm(false)
+  tui.setup(context)
+  const fake = fakeAdminFetch()
+  const original = globalThis.fetch
+  globalThis.fetch = fake.fetchImpl
+  try {
+    await command().run("judge pull")
+  } finally {
+    globalThis.fetch = original
+  }
+  expect(fake.calls.some((call) => call.path === "/admin/api/hf/download")).toBe(false)
 })
