@@ -100,8 +100,8 @@ host server (Bun, OpenCode V2 / Kilo)
 | `src/judge.js` | oMLX model discovery, request, JSON parsing, timeout, cache, health |
 | `src/apply.js` | `switchModel` application, optimiser plan application, user-override detection |
 | `src/state.js` | Config read (mtime), pin files, decision log append, stats, atomic writes |
-| `src/commands.js` | `/router` text subcommands and shared formatting |
-| `src/tui.js` | OpenCode TUI palette command: status + interactive policy picker |
+| `src/commands.js` | Shared status/decision formatting used by the TUI part and the CLI (no server-side command registration) |
+| `src/tui.js` | OpenCode TUI part: `/router` slash command + palette entry, dialogs/toasts, direct config/state access |
 | `bin/omlx-router.mjs` | CLI: status/config/history/doctor/pool |
 | `core/src/lib.rs` | ABI: `abi_version`, `alloc`, `dealloc`, `result_len`, `route`, `optimise` |
 | `core/src/{envelope,triage,pool,score,pin,optimise,types}.rs` | Pure logic + serde types |
@@ -513,20 +513,35 @@ file. The decision log rotates at 5 MB with one backup.
 
 ## 12. Commands, TUI, CLI
 
-OpenCode V2 registers one command, `/router`, with text subcommands:
-`status`, `on`, `off`, `policy [cost|quality|latency]`, `pool`, `history [n]`,
-`explain`, `pin <provider/model>`, `auto`, `judge`, `subagents on|off`. Output
-goes through `ctx.session.synthetic`. If synthetic output proves to trigger a
-model turn, the fallback is a TUI toast plus a rendered Markdown file.
+The command surface lives in the **OpenCode TUI part**, not in a server command.
+Probing showed that `ctx.session.synthetic` displays output but also starts a
+model turn, which would make every status check cost money. A server command has
+no other display channel.
 
-The TUI part (OpenCode only, plain JavaScript, no JSX/TypeScript) adds a palette
-command **"oMLX Router: settings"** that opens a `ui.dialog.select` for policy,
-on/off, judge health, and status; it writes `config.json` and toasts the result.
-It deliberately has no slash alias to avoid colliding with `/router`.
+The TUI part (plain JavaScript, no JSX/TypeScript) registers a `/router` slash
+command and a palette entry **"oMLX Router: settings"**:
+
+| Input | Behaviour |
+|---|---|
+| `/router` | Status dialog: on/off, policy, pool source + size, pins (root and subagents), last decision, judge health |
+| `/router policy` | Interactive `ui.dialog.select` for `cost` / `quality` / `latency`; writes config, clears pins |
+| `/router on` / `/router off` | Toggle, persisted to config |
+| `/router pool` | List resolved models with inferred quality/cost/local flags and exclusion reasons |
+| `/router history [n]` | Recent decisions from `decisions.jsonl`, optionally filtered to the current session |
+| `/router explain` | Full trace of the current session's last decision |
+| `/router pin` / `/router auto` | Force or release a pin for the current session by writing the pin file |
+| `/router judge` | Calls oMLX directly: model, latency, sample verdict |
+| `/router subagents on\|off` | Toggle child-session routing in config |
+
+The TUI part reads and writes the same config file and state files as the
+adapter, so changes take effect on the next turn via the adapter's mtime check.
+It lists models through its own location data and calls oMLX with `fetch`; it
+never asks the server to display anything. Pin writes use the same atomic
+write path as the adapter.
 
 The CLI (`bin/omlx-router.mjs`, Bun or Node, zero dependencies) provides
-`status`, `config get|set`, `history [n]`, `doctor`, `pool`. It is the control
-surface for Kilo and for headless use.
+`status`, `config get|set`, `history [n]`, `doctor`, `pool`, and is the control
+surface for Kilo, headless `opencode run`/`serve`, and OpenCode Desktop.
 
 ## 13. Telemetry and privacy
 
@@ -553,9 +568,12 @@ retention, average pruning, and per-agent breakdown.
 ## 14. Kilo shim
 
 - One default export: V2 reads `id`/`setup`, Kilo calls `server()`.
-- `chat.message`: route, then switch via `client.session.switchModel` (or the
-  equivalent server endpoint confirmed by the probe). `chat.params` passes
-  through; `experimental.chat.messages.transform` applies the optimiser plan.
+- `chat.message`: route, then switch with the SDK's generic transport:
+  `client.session._client.post({url: "/api/session/{sessionID}/model", path:
+  {sessionID}, body: {model: {providerID, id}}})`. The probe confirmed a 204 and
+  that the **current** turn keeps its model, so the switch applies at the next
+  boundary. `chat.params` passes through;
+  `experimental.chat.messages.transform` applies the optimiser plan.
 - Decisions record `applied: "boundary"` when the model switch cannot affect the
   in-flight turn. The README documents this limitation.
 - If the switch API is unavailable, the shim logs once, sets status to
@@ -575,7 +593,7 @@ retention, average pruning, and per-agent breakdown.
 | Config invalid JSON | Defaults + status warning; never crash |
 | Pin/state write fails | Continue in memory, warn in status |
 | `session.get` fails | Treat as root, no agent metadata |
-| `ctx.session.synthetic` triggers a turn | Fallback output path (toast/file) |
+| `ctx.session.synthetic` triggers a turn | Not used; TUI displays output, CLI prints it |
 | Router disabled | Hooks registered but no decisions; host behaviour unchanged |
 
 ## 16. Testing
@@ -637,22 +655,21 @@ the essentials inline. `config.example.json` ships with the repo.
 | M6 surfaces | Commands, TUI picker, CLI, stats/history/explain | All commands documented and exercised |
 | M7 release | Docs, CI, npm pack, tag | README complete; CI green; `npm pack` installs in both hosts |
 
-## 20. Open validation items
+## 20. Probe results and remaining validation
 
-These are bounded validations, not design gaps; results are recorded in
-`docs/development.md`.
+The M0 probe ran on 2026-11-15; full evidence is in `docs/development.md`.
 
-1. Does `switchModel` inside the `prompt` hook affect the in-flight root turn?
-   If not: apply at the next boundary and document it; the proxy-provider design
-   becomes a follow-up.
-2. Same question for a subagent's first turn.
-3. Does a plain-object default export (`{ id, setup }` for the server part and the
-   TUI part) load without importing `@opencode/plugin`? If not, add the
-   dependency (still no TypeScript).
-4. Does Kilo expose a usable `session.switchModel` to plugins, and does
-   `chat.message` run before model resolution?
-5. Does `ctx.session.synthetic` display without starting a model turn? Fallback
-   documented in §12.
+| Question | Result |
+|---|---|
+| `switchModel` in the `prompt` hook affects the in-flight root turn (V2) | **Yes** — same-turn assistant message and context use the new model |
+| Same for a subagent's first turn | **Yes** — child has `parentID`, agent `explore`, switched same turn, parent unaffected |
+| Plain-object export without `@opencode/plugin` (server part) | **Yes** |
+| Kilo: `chat.message` before resolution, usable switch API | **Yes** — `chat.message` is pre-request; `client.session._client.post("/api/session/{id}/model")` returns 204 but applies to the next boundary |
+| `ctx.session.synthetic` without starting a model turn | **No** — it starts a turn; command output moved to the TUI part and CLI (§12) |
+
+Remaining before M6: confirm the TUI part also loads as a plain object without
+`@opencode/plugin/tui`; if it does not, import it there only (still no
+TypeScript).
 
 ## 21. License
 

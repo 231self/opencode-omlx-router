@@ -309,29 +309,28 @@ generation requests are never pruned or routed.
 
 ## Commands
 
-OpenCode V2, via `/router`:
+The `/router` surface runs in the **OpenCode TUI** (the plugin's TUI part), so
+status and settings never cost a model turn. The same actions are available in
+the CLI for headless `opencode run`/`serve`, OpenCode Desktop, and Kilo.
 
 | Command | Purpose |
 |---|---|
-| `/router` or `/router status` | Router state, policy, pool, pins, last decision, judge health |
+| `/router` | Status dialog: state, policy, pool, pins, last decision, judge health |
 | `/router on` / `/router off` | Enable or disable routing |
-| `/router policy` | Explain the policies and show the current one |
-| `/router policy cost\|quality\|latency` | Switch policy; clears pins |
-| `/router pool` | Resolved models, scores, and exclusion reasons |
+| `/router policy` | Interactive picker for `cost` / `quality` / `latency`; clears pins |
+| `/router pool` | Resolved models with inferred quality/cost/local flags and exclusion reasons |
 | `/router history [n]` | Recent decisions, including subagents |
-| `/router explain` | Full trace of the last decision |
-| `/router pin <provider/model>` | Force a model for this session |
-| `/router auto` | Release a forced pin and resume routing |
-| `/router judge` | Probe oMLX judge: model, latency, sample verdict |
+| `/router explain` | Full trace of this session's last decision |
+| `/router pin` / `/router auto` | Force or release a model pin for this session |
+| `/router judge` | Probe oMLX directly: model, latency, sample verdict |
 | `/router subagents on\|off` | Toggle subagent routing |
 
-The OpenCode TUI also adds a palette command, **"oMLX Router: settings"**, which
-opens an interactive dialog for policy, on/off, judge health, and status (no
-slash alias, to avoid colliding with `/router`).
+A palette entry, **"oMLX Router: settings"**, opens the same dialog without
+typing a command.
 
 ### CLI
 
-Works in any host, including Kilo:
+Works in any host, including Kilo, headless OpenCode, and CI:
 
 ```sh
 omlx-router status
