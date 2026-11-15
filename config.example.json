@@ -1,0 +1,77 @@
+{
+  "enabled": true,
+  "policy": "cost",
+  "pool": {
+    "source": "favorites",
+    "models": [],
+    "include": [],
+    "exclude": [],
+    "maxModels": 8,
+    "requireTools": true,
+    "minContext": 32000
+  },
+  "judge": {
+    "enabled": true,
+    "baseURL": "http://127.0.0.1:1234/v1",
+    "model": "auto",
+    "apiKey": "{env:OMLX_API_KEY}",
+    "timeoutMs": 1500,
+    "cacheTtlMs": 600000,
+    "cacheSize": 128
+  },
+  "pin": {
+    "switchThreshold": 0.12,
+    "idleTtlMs": 300000,
+    "flipFlopTurns": 3,
+    "cacheHitRatio": 0.8
+  },
+  "optimiser": {
+    "enabled": true,
+    "reserveOutputTokens": 8192,
+    "safetyTokens": 1024,
+    "maxToolTokens": 2000,
+    "keepRecentToolOutputs": 3,
+    "keepRecentTurns": 2
+  },
+  "limits": {
+    "shortfallTolerance": 0.2,
+    "allowLocalForComplexity": 2,
+    "expectedOutputTokens": 1200,
+    "contextFitRatio": 0.9
+  },
+  "quality": {
+    "overrides": {}
+  },
+  "latency": {
+    "overrides": {},
+    "localProviders": []
+  },
+  "subagents": {
+    "enabled": true,
+    "overrideExplicitModel": false,
+    "default": {
+      "policy": "cost",
+      "qualityFloor": 0.0
+    },
+    "agents": {
+      "explore": {
+        "policy": "latency",
+        "qualityFloor": 0.45,
+        "minContext": 128000
+      },
+      "general": {
+        "policy": "cost",
+        "qualityFloor": 0.55
+      },
+      "review": {
+        "policy": "quality",
+        "qualityFloor": 0.75
+      },
+      "plan": {
+        "policy": "quality",
+        "qualityFloor": 0.8
+      }
+    }
+  },
+  "debug": false
+}
