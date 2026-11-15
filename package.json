@@ -1,0 +1,51 @@
+{
+  "name": "opencode-omlx-router",
+  "version": "0.1.0",
+  "description": "Per-turn model routing for OpenCode V2 and Kilo, decided by a small oMLX-served model, with a WASM routing core and context optimiser.",
+  "type": "module",
+  "license": "Apache-2.0",
+  "author": "231self",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/231self/opencode-omlx-router.git"
+  },
+  "homepage": "https://github.com/231self/opencode-omlx-router#readme",
+  "bugs": {
+    "url": "https://github.com/231self/opencode-omlx-router/issues"
+  },
+  "exports": {
+    ".": "./src/index.js",
+    "./tui": "./src/tui.js"
+  },
+  "bin": {
+    "omlx-router": "./bin/omlx-router.mjs"
+  },
+  "files": [
+    "src",
+    "dist/core.wasm",
+    "bin",
+    "README.md",
+    "LICENSE",
+    "config.example.json"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "keywords": [
+    "opencode",
+    "kilo",
+    "plugin",
+    "llm-router",
+    "omlx",
+    "mlx",
+    "wasm"
+  ],
+  "scripts": {
+    "build": "bun run build:wasm",
+    "build:wasm": "bash scripts/build-wasm.sh",
+    "test": "bun run build:wasm && bun test",
+    "test:rust": "cargo test --manifest-path core/Cargo.toml",
+    "check": "bash scripts/check.sh",
+    "prepack": "bun run build:wasm"
+  }
+}

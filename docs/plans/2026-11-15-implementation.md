@@ -40,6 +40,10 @@ Verification: findings recorded, each item answered yes/no with evidence
 
 ## M1 — Skeleton
 
+**Completed 2026-11-15:** package metadata, Rust ABI with passthrough stubs,
+wasm build and size gate, loader, config seeding/reading, atomic state, status
+formatting, adapter skeleton, TUI status shell, CLI, and tests (24 Bun + 8 Rust).
+
 - **T1.1** `package.json` (name, exports, bin, files, scripts, Apache-2.0),
   `rust-toolchain.toml`, `core/Cargo.toml`, directory layout, `.gitignore`
   check.

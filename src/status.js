@@ -1,0 +1,70 @@
+import { readConfig } from "./config.js"
+import { hostStateDir, listPins, readDecisions, readStats } from "./state.js"
+import { VERSION } from "./version.js"
+
+/**
+ * Snapshot of router state for the TUI and CLI.
+ *
+ * Read-only: never creates or repairs files.
+ */
+export function buildStatus({ host = "opencode", env = process.env, core = null } = {}) {
+  const { config, path, existed, error } = readConfig({ env, write: false })
+
+  let pins = []
+  let last = null
+  let stats = null
+  let stateError = null
+  try {
+    pins = listPins(host, env)
+    last = readDecisions(host, 1, env)[0] ?? null
+    stats = readStats(host, env)
+  } catch (cause) {
+    stateError = String(cause?.message ?? cause)
+  }
+
+  return {
+    name: "opencode-omlx-router",
+    version: VERSION,
+    host,
+    enabled: Boolean(config.enabled),
+    policy: config.policy,
+    pool: config.pool.source,
+    judge: {
+      enabled: Boolean(config.judge.enabled),
+      baseURL: config.judge.baseURL,
+      model: config.judge.model,
+    },
+    configPath: path,
+    configExists: existed,
+    stateDir: hostStateDir(host, env),
+    pins: pins.length,
+    pinModels: pins.slice(0, 3).map((pin) => pin.model ?? pin.chosen ?? null).filter(Boolean),
+    last,
+    stats,
+    core,
+    error: error ?? stateError,
+  }
+}
+
+function modelLabel(model) {
+  if (!model) return "none"
+  if (typeof model === "string") return model
+  return `${model.providerID}/${model.id ?? model.modelID}${model.variant ? `#${model.variant}` : ""}`
+}
+
+export function formatStatus(status) {
+  const lines = [
+    `${status.name} ${status.version} · ${status.host}`,
+    `state      ${status.enabled ? "enabled" : "disabled"} · policy ${status.policy} · pool ${status.pool}`,
+    `config     ${status.configPath}${status.configExists ? "" : " (not created yet)"}`,
+    `state dir  ${status.stateDir}`,
+    `judge      ${status.judge.enabled ? status.judge.model : "disabled"} · ${status.judge.baseURL}`,
+    `pins       ${status.pins}${status.pinModels.length ? ` (${status.pinModels.map(modelLabel).join(", ")})` : ""}`,
+    `core       ${status.core?.abi ? `ABI ${status.core.abi}` : "not loaded"}`,
+    `last       ${status.last ? `${status.last.chosen ?? "unknown"} · ${status.last.stage ?? ""} · ${status.last.pinned ? "pinned" : "switched"}` : "none"}`,
+  ]
+  if (status.error) lines.push(`warning    ${status.error}`)
+  return lines.join("\n")
+}
+
+export { modelLabel }

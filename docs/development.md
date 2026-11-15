@@ -66,6 +66,13 @@ hooks ran. No import of `@opencode/plugin` was present.
 Side observation: Kilo's built-in title agent uses `kilo-auto/small`, a Kilo
 router. It is unrelated to this plugin.
 
+### T0.6b — one export object for both hosts
+
+**Yes.** Kilo 7.6.2 accepts the object form `export default { id, server }`
+(the V1 `server()` function) and calls it. OpenCode V2 accepts
+`{ id, setup }`. A single default export containing both `setup` and `server`
+therefore serves both hosts without a build step or separate entrypoint.
+
 ### T0.6 — `ctx.session.synthetic` as command output
 
 **Not suitable.** A synthetic message is displayed but also **starts a model

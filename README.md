@@ -5,10 +5,11 @@ Per-turn model routing for [OpenCode V2](https://opencode.ai) and
 [oMLX](https://github.com/jundot/omlx), with a context optimiser that keeps each
 turn inside the chosen model's budget.
 
-> **Status: design complete, implementation pending (v0.1.0).** The behaviour
-> below is the agreed v0.1 design and the implementation target. Until the first
-> release is published, the install commands do not work. The design of record
-> lives in
+> **Status: early development (v0.1.0).** The design is complete, and the WASM
+> core, adapters, config/state, and CLI skeleton are in the repository. Routing,
+> the context optimiser, subagent policy, Kilo hooks, and release packaging are
+> landing per the implementation plan. Install commands do not work until the
+> first release. Design of record:
 > [`docs/specs/2026-11-15-opencode-omlx-router-design.md`](docs/specs/2026-11-15-opencode-omlx-router-design.md).
 
 ## Why

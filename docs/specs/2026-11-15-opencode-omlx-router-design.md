@@ -666,6 +666,7 @@ The M0 probe ran on 2026-11-15; full evidence is in `docs/development.md`.
 | Plain-object export without `@opencode/plugin` (server part) | **Yes** |
 | Kilo: `chat.message` before resolution, usable switch API | **Yes** — `chat.message` is pre-request; `client.session._client.post("/api/session/{id}/model")` returns 204 but applies to the next boundary |
 | `ctx.session.synthetic` without starting a model turn | **No** — it starts a turn; command output moved to the TUI part and CLI (§12) |
+| One object export (`{ id, setup, server }`) loads in both hosts | **Yes** — V2 reads `setup`, Kilo calls `server()` |
 
 Remaining before M6: confirm the TUI part also loads as a plain object without
 `@opencode/plugin/tui`; if it does not, import it there only (still no
