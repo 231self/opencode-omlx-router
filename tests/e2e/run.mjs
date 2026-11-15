@@ -45,7 +45,7 @@ class StepError extends Error {
 }
 
 function parseArgs(argv) {
-  const options = { only: null, host: null, keep: false, realJudge: false, list: false }
+  const options = { only: null, host: null, keep: false, realJudge: false, list: false, packageRoot: null }
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index]
     if (arg === "--help" || arg === "-h") {
@@ -56,6 +56,8 @@ function parseArgs(argv) {
       options.realJudge = true
     } else if (arg === "--list") {
       options.list = true
+    } else if (arg === "--package" || arg.startsWith("--package=")) {
+      options.packageRoot = arg.includes("=") ? arg.split("=")[1] : argv[++index]
     } else if (arg === "--host" || arg.startsWith("--host=")) {
       options.host = arg.includes("=") ? arg.split("=")[1] : argv[++index]
     } else if (arg === "--only" || arg.startsWith("--only=")) {
@@ -75,6 +77,7 @@ function usage() {
   --host <name>     only opencode or kilo scenarios
   --real-judge      include scenarios tagged liveOnly (needs oMLX)
   --keep            keep every scenario workspace
+  --package <path>  use an installed package directory instead of this checkout
   --list            list scenarios
 `
 }
@@ -142,7 +145,7 @@ function findSessionID(ids, hash) {
   return ids.find((id) => sessionHash(id) === hash) ?? null
 }
 
-async function runScenario(scenario, { stub, root, keep }) {
+async function runScenario(scenario, { stub, root, keep, packageRoot }) {
   const host = scenario.host ?? "opencode"
   const bin = hostBinary(host)
   if (!Bun.which(bin)) throw new Error(`${bin} is not installed`)
@@ -163,7 +166,7 @@ async function runScenario(scenario, { stub, root, keep }) {
   fs.writeFileSync(configPath, `${JSON.stringify(config, null, 2)}\n`)
 
   const initialModel = scenario.model ?? FLASH
-  writeHostConfig(host, workspace, REPO, initialModel)
+  writeHostConfig(host, workspace, packageRoot ?? REPO, initialModel)
 
   let favoritesPath = null
   if (Array.isArray(scenario.favorites)) {
@@ -419,7 +422,12 @@ async function main() {
   const results = []
   try {
     for (const scenario of scenarios) {
-      const result = await runScenario(scenario, { stub, root, keep: options.keep })
+      const result = await runScenario(scenario, {
+        stub,
+        root,
+        keep: options.keep,
+        packageRoot: options.packageRoot ? path.resolve(options.packageRoot) : null,
+      })
       results.push(result)
       printResult(result)
       if (result.ok && options.keep) console.log(`  workspace: ${result.work}`)

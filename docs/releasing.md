@@ -83,6 +83,13 @@ tar -tzf opencode-omlx-router-0.1.0.tgz | head
 
 Then install it as a consumer (below) in a scratch project and confirm a
 decision is logged in `~/.local/state/omlx-router/opencode/decisions.jsonl`.
+The prompt harness can drive the installed package directly:
+
+```sh
+npm install ./opencode-omlx-router-0.1.0.tgz
+bun tests/e2e/run.mjs --only judge-cost --package "$PWD/node_modules/opencode-omlx-router"
+bun tests/e2e/run.mjs --only kilo-boundary --package "$PWD/node_modules/opencode-omlx-router"
+```
 
 ## Consumer install (after publish)
 

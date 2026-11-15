@@ -33,7 +33,12 @@ bun tests/e2e/run.mjs --host opencode
 bun tests/e2e/run.mjs --only pin-holds,complexity-jump
 bun tests/e2e/run.mjs --keep     # keep temp workspaces
 bun run test:e2e:live            # one prompt through the real oMLX judge
+bun tests/e2e/run.mjs --package /path/to/node_modules/opencode-omlx-router
 ```
+
+`--package` points the host config at an installed package instead of this
+checkout, which verifies the published tarball (including `dist/core.wasm`)
+rather than the source tree.
 
 Each run prints one line per step and writes a temp workspace per scenario. On
 failure the workspace is kept and printed; on success it is removed unless
