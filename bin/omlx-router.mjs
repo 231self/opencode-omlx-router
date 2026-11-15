@@ -9,8 +9,8 @@ import {
   formatBytes,
   judgeAvailability,
 } from "../src/provision.js"
-import { buildStatus, formatStatus } from "../src/status.js"
-import { readDecisions } from "../src/state.js"
+import { buildStatus, formatMilliseconds, formatStatus, formatTiming } from "../src/status.js"
+import { readDecisions, readTurns, summariseTurns } from "../src/state.js"
 import { VERSION } from "../src/version.js"
 import { loadCore } from "../src/wasm.js"
 
@@ -43,6 +43,7 @@ Usage:
   omlx-router config get <key>
   omlx-router config set <key> <value>
   omlx-router history [n] [--json]
+  omlx-router timing [n] [--json]
   omlx-router pool
   omlx-router doctor
   omlx-router judge pull [repo] [--yes]
@@ -125,10 +126,36 @@ function historyCommand() {
   for (const record of decisions) {
     const when = new Date(record.ts ?? Date.now()).toISOString()
     const role = record.role === "subagent" ? `sub(${record.agent ?? "?"})` : "root"
+    const timing = record.timing ?? {}
     console.log(
       `${when}  ${role.padEnd(14)} ${String(record.chosen ?? "?").padEnd(36)} ${
         record.pinned ? "pinned " : "switched"
-      } ${record.stage ?? ""}`,
+      } ${record.stage ?? ""}  judge ${formatMilliseconds(timing.judgeMs ?? record.judge?.ms ?? 0)} route ${formatMilliseconds(timing.routeMs ?? 0)}`,
+    )
+  }
+}
+
+function timingCommand() {
+  const limit = Number(rest[0] ?? 20)
+  const turns = readTurns(host, Number.isFinite(limit) ? limit : 20)
+  const summary = summariseTurns(turns, Number.isFinite(limit) ? limit : 20)
+  if (wantsJson) {
+    console.log(JSON.stringify({ summary, turns }, null, 2))
+    return
+  }
+  if (turns.length === 0) {
+    console.log("no turn timings recorded yet; send a prompt first")
+    return
+  }
+  console.log(formatTiming(summary) ?? "no turn timings recorded yet")
+  console.log("")
+  for (const turn of turns.slice(-10)) {
+    const when = new Date(turn.ts ?? Date.now()).toLocaleTimeString()
+    const role = turn.role === "subagent" ? `sub(${turn.agent || "?"})` : "root"
+    console.log(
+      `${when}  ${role.padEnd(14)} ${String(turn.usedModel ?? turn.model ?? "?").padEnd(36)} ` +
+        `judge ${formatMilliseconds(turn.judgeMs).padEnd(7)} model ${formatMilliseconds(turn.modelMs).padEnd(7)} ` +
+        `tools ${formatMilliseconds(turn.toolMs).padEnd(7)} turn ${formatMilliseconds(turn.turnMs)}`,
     )
   }
 }
@@ -310,6 +337,9 @@ try {
       break
     case "history":
       historyCommand()
+      break
+    case "timing":
+      timingCommand()
       break
     case "pool":
       poolCommand()

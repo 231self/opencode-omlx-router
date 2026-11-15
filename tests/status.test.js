@@ -3,8 +3,8 @@ import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 
-import { appendDecision, writePin } from "../src/state.js"
-import { buildStatus, formatStatus } from "../src/status.js"
+import { appendDecision, appendTurn, writePin } from "../src/state.js"
+import { buildStatus, formatStatus, formatTiming } from "../src/status.js"
 
 function tempEnv() {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "omlx-router-status-"))
@@ -50,4 +50,31 @@ test("formatStatus always shows the essentials", () => {
   expect(text).toContain("policy cost")
   expect(text).toContain("core       ABI 1")
   expect(text).toContain("last       none")
+})
+
+test("status and formatting expose judge vs remote timing", () => {
+  const { env } = tempEnv()
+  appendTurn(
+    "opencode",
+    {
+      ts: Date.now(),
+      role: "root",
+      model: "deepseek/deepseek-flash",
+      usedModel: "deepseek/deepseek-flash",
+      turnMs: 10_000,
+      routeMs: 1_000,
+      judgeMs: 800,
+      modelMs: 7_000,
+      toolMs: 2_000,
+    },
+    env,
+  )
+  const status = buildStatus({ host: "opencode", env })
+  expect(status.timing.count).toBe(1)
+  expect(status.lastTurn.modelMs).toBe(7_000)
+  const line = formatTiming(status.timing)
+  expect(line).toContain("local judge 800ms")
+  expect(line).toContain("remote model 7.0s")
+  expect(line).toContain("(last 1)")
+  expect(formatStatus(status)).toContain("timing     local judge")
 })

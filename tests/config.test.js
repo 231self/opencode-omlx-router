@@ -80,3 +80,7 @@ test("saveConfig writes merged defaults", () => {
   const reread = readConfig({ env })
   expect(reread.config.enabled).toBe(false)
 })
+
+test("the default judge timeout covers a cold 4B judge", () => {
+  expect(DEFAULT_CONFIG.judge.timeoutMs).toBe(5000)
+})

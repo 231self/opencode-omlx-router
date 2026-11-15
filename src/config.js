@@ -21,7 +21,7 @@ export const DEFAULT_CONFIG = {
     baseURL: "http://127.0.0.1:1234/v1",
     model: "auto",
     apiKey: "{env:OMLX_API_KEY}",
-    timeoutMs: 1500,
+    timeoutMs: 5000,
     cacheTtlMs: 600000,
     cacheSize: 128,
     provision: {
@@ -66,6 +66,7 @@ export const DEFAULT_CONFIG = {
       plan: { policy: "quality", qualityFloor: 0.8 },
     },
   },
+  telemetry: { enabled: true },
   debug: false,
 }
 

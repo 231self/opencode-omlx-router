@@ -66,12 +66,22 @@ function pinForRequest(pin) {
  * decision, persists pins/decisions, and drives the judge.
  */
 export class Router {
-  constructor({ ctx, host = "opencode", env = process.env, core = null, judge = null, configOptions = {}, appliedMode = "same-turn" } = {}) {
+  constructor({
+    ctx,
+    host = "opencode",
+    env = process.env,
+    core = null,
+    judge = null,
+    telemetry = null,
+    configOptions = {},
+    appliedMode = "same-turn",
+  } = {}) {
     this.ctx = ctx
     this.host = host
     this.env = env
     this.core = core
     this.judge = judge ?? new Judge({ config: {}, env })
+    this.telemetry = telemetry
     this.configOptions = configOptions
     this.appliedMode = appliedMode
     this.failures = new Map()
@@ -139,6 +149,7 @@ export class Router {
   }
 
   async prompt(event) {
+    const promptStarted = Date.now()
     try {
       const config = this.config()
       if (!config.enabled || !this.core) return
@@ -201,22 +212,29 @@ export class Router {
         stats,
       }
 
+      let coreMs = 0
+      let coreStarted = Date.now()
       let result = this.core.route(request)
+      coreMs += Date.now() - coreStarted
       let judgeMs = null
       if (result.action === "need_judge" && result.judgeRequest) {
         this.judge.configure(config.judge)
+        const judgeStarted = Date.now()
         try {
           const judged = await this.judge.verdict({
             prompt: result.judgeRequest.prompt,
             cacheKey: result.judgeRequest.cacheKey,
           })
           request.judge = { verdict: judged.verdict, cached: Boolean(judged.cached), unavailable: false }
-          judgeMs = judged.ms ?? null
+          judgeMs = judged.ms ?? Date.now() - judgeStarted
         } catch (error) {
           request.judge = { verdict: null, cached: false, unavailable: true }
+          judgeMs = Date.now() - judgeStarted
           this.lastJudgeError = String(error?.message ?? error)
         }
+        coreStarted = Date.now()
         result = this.core.route(request)
+        coreMs += Date.now() - coreStarted
       }
 
       if (result.action !== "decide" || !result.decision) {
@@ -226,7 +244,9 @@ export class Router {
 
       let switched = false
       let switchError = null
+      let switchMs = 0
       if (!sameModelAndVariant(current, decisionRef(result.decision))) {
+        const switchStarted = Date.now()
         try {
           const model = { providerID: result.decision.providerID, id: result.decision.id }
           if (result.decision.variant) model.variant = result.decision.variant
@@ -234,6 +254,8 @@ export class Router {
           switched = true
         } catch (error) {
           switchError = String(error?.message ?? error)
+        } finally {
+          switchMs = Date.now() - switchStarted
         }
       }
 
@@ -252,7 +274,28 @@ export class Router {
         writePin(this.host, sessionID, merged, this.env)
       }
       if (result.state) writeStats(this.host, result.state, this.env)
-      this.record(result, config, { switched, switchError, judgeMs })
+      const routeMs = Date.now() - promptStarted
+      this.record(result, config, {
+        switched,
+        switchError,
+        judgeMs,
+        routeMs,
+        coreMs,
+        switchMs,
+      })
+      this.telemetry?.notePrompt(sessionID, {
+        at: promptStarted,
+        routeMs,
+        judgeMs: judgeMs ?? 0,
+        coreMs,
+        switchMs,
+        chosen: result.action === "decide" ? decisionRef(result.decision) : current,
+        role: request.role,
+        agent: request.session.agentID,
+        complexity: result.decision?.complexity ?? result.log?.complexity,
+        turnClass: result.log?.turnClass,
+        promptTokens: request.turn.promptTokens,
+      })
     } catch (error) {
       if (this.config().debug) console.error("[omlx-router] prompt failed:", String(error?.message ?? error))
     }
@@ -266,6 +309,12 @@ export class Router {
       ...log,
       applied: result.action === "decide" ? (extra.switchError ? "none" : this.appliedMode) : "none",
       error: extra.switchError ?? null,
+      timing: {
+        routeMs: Number(extra.routeMs) || 0,
+        judgeMs: Number(extra.judgeMs) || 0,
+        coreMs: Number(extra.coreMs) || 0,
+        switchMs: Number(extra.switchMs) || 0,
+      },
       judge: {
         ...(log.judge ?? {}),
         cached: Boolean(result.action === "need_judge" ? false : log.judge?.cached),

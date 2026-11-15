@@ -4,6 +4,7 @@ import os from "node:os"
 import path from "node:path"
 
 const DECISION_LIMIT_BYTES = 5 * 1024 * 1024
+const TURN_LIMIT_BYTES = 5 * 1024 * 1024
 
 export function stateRoot(env = process.env) {
   return env.OMLX_ROUTER_STATE || path.join(os.homedir(), ".local", "state", "omlx-router")
@@ -144,6 +145,104 @@ export function readDecisions(host, limit = 20, env = process.env) {
     }
   }
   return out
+}
+
+export function turnsPath(host, env = process.env) {
+  return path.join(hostStateDir(host, env), "turns.jsonl")
+}
+
+export function appendTurn(host, record, env = process.env) {
+  const file = turnsPath(host, env)
+  ensureDir(path.dirname(file))
+  try {
+    if (fs.statSync(file).size > TURN_LIMIT_BYTES) fs.renameSync(file, `${file}.1`)
+  } catch (error) {
+    if (error.code !== "ENOENT") throw error
+  }
+  fs.appendFileSync(file, `${JSON.stringify(record)}\n`)
+}
+
+export function readTurns(host, limit = 50, env = process.env) {
+  let text
+  try {
+    text = fs.readFileSync(turnsPath(host, env), "utf8")
+  } catch (error) {
+    if (error.code === "ENOENT") return []
+    throw error
+  }
+  const lines = text.split("\n").filter(Boolean)
+  const slice = limit > 0 ? lines.slice(-limit) : lines
+  const out = []
+  for (const line of slice) {
+    try {
+      out.push(JSON.parse(line))
+    } catch {
+      // Skip corrupt lines rather than hiding the rest of the log.
+    }
+  }
+  return out
+}
+
+const TIMING_METRICS = [
+  "turnMs",
+  "routeMs",
+  "judgeMs",
+  "coreMs",
+  "switchMs",
+  "executionMs",
+  "modelMs",
+  "toolMs",
+  "ttftMs",
+]
+
+function numbers(values) {
+  return values.map(Number).filter((value) => Number.isFinite(value) && value >= 0)
+}
+
+function mean(values) {
+  if (values.length === 0) return 0
+  return values.reduce((total, value) => total + value, 0) / values.length
+}
+
+function percentile(values, fraction) {
+  if (values.length === 0) return 0
+  const sorted = [...values].sort((left, right) => left - right)
+  const position = (sorted.length - 1) * fraction
+  const lower = Math.floor(position)
+  const upper = Math.ceil(position)
+  if (lower === upper) return sorted[lower]
+  return sorted[lower] + (sorted[upper] - sorted[lower]) * (position - lower)
+}
+
+/** Aggregate the last turns so the CLI can show local-judge vs remote-model time. */
+export function summariseTurns(turns, window = 20) {
+  const recent = (turns ?? []).slice(-window)
+  const summary = {
+    count: recent.length,
+    window: Math.min(window, recent.length),
+    averages: {},
+    p50: {},
+    max: {},
+    shares: {},
+  }
+  for (const metric of TIMING_METRICS) {
+    const values = numbers(recent.map((turn) => turn?.[metric]))
+    summary.averages[metric] = Math.round(mean(values))
+    summary.p50[metric] = Math.round(percentile(values, 0.5))
+    summary.max[metric] = values.length > 0 ? Math.round(Math.max(...values)) : 0
+  }
+  const total = summary.averages.turnMs
+  if (total > 0) {
+    summary.shares.local = summary.averages.routeMs / total
+    summary.shares.judge = summary.averages.judgeMs / total
+    summary.shares.model = summary.averages.modelMs / total
+    summary.shares.tools = summary.averages.toolMs / total
+    summary.shares.other = Math.max(
+      0,
+      1 - summary.shares.local - summary.shares.model - summary.shares.tools,
+    )
+  }
+  return summary
 }
 
 export function writeStats(host, stats, env = process.env) {

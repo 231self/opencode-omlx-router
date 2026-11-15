@@ -20,6 +20,7 @@ host (OpenCode V2 / Kilo, Bun)
 | `src/judge.js` | oMLX model discovery, verdict call, LRU cache, probe |
 | `src/optimiser.js` | Builds optimise requests and applies pruning plans |
 | `src/config.js` / `src/state.js` | Config seeding, atomic state files |
+| `src/telemetry.js` | Host event subscription → per-turn timing, tokens, cost |
 | `src/tui.js` | OpenCode TUI `/router` command (no server commands) |
 | `bin/omlx-router.mjs` | CLI for headless/Kilo/Desktop |
 
@@ -64,6 +65,9 @@ Modules:
    carries only `providerID`/`id`, so the adapter resolves limits from the live
    catalog before measuring. Context writes merge with the latest pin and never
    overwrite a model chosen by a concurrent prompt hook.
+9. `telemetry` subscribes to `session.execution.*` and `session.step.*` events.
+   At execution end it records the routing/judge time from the prompt hook and
+   the remote model, tool, and total turn time in `turns.jsonl`.
 
 ## Subagents
 
@@ -94,6 +98,8 @@ compaction path takes over.
 ## Failure isolation
 
 - Missing/invalid wasm, ABI mismatch, or trap: routing disabled, host unchanged.
+- Telemetry event errors, missing events, or disk failures: ignored; routing and
+  the turn continue.
 - Judge timeout/HTTP/parse error: heuristic verdict; log records `used: false`.
 - `switchModel` rejection: logged, pin kept, next turn retries.
 - Config/state write failures: continue in memory; status reports the warning.
@@ -105,6 +111,7 @@ compaction path takes over.
 ~/.config/omlx-router/config.json          shared settings
 ~/.local/state/omlx-router/opencode/pins/<sha>.json
 ~/.local/state/omlx-router/opencode/decisions.jsonl      (5 MB rotation)
+~/.local/state/omlx-router/opencode/turns.jsonl          (5 MB rotation)
 ~/.local/state/omlx-router/opencode/stats.json
 ~/.local/state/omlx-router/kilo/…          same layout per host
 ```

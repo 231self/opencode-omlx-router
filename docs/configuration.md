@@ -22,6 +22,18 @@ Environment overrides (useful for tests and multi-profile setups):
 | `policy` | `"cost"` | `cost`, `quality`, or `latency` |
 | `debug` | `false` | Adapter debug logs (never prompt text) |
 
+## `telemetry`
+
+| Key | Default | Notes |
+|---|---|---|
+| `enabled` | `true` | Record per-turn timing in `turns.jsonl` |
+
+Telemetry subscribes to the host's public events and writes one record per
+turn: routing time (including the local judge), remote model-call time, tool
+time, time to first token, steps, tokens, and cost. It stores a hashed session
+id and model ids, never prompt or tool text. Disable it if you do not want the
+extra file; decision records still contain `timing.routeMs/judgeMs`.
+
 ## `pool`
 
 | Key | Default | Notes |
@@ -46,7 +58,7 @@ all available models and emit a warning in `/router pool`.
 | `baseURL` | `http://127.0.0.1:1234/v1` | oMLX OpenAI-compatible endpoint |
 | `model` | `"auto"` | `auto` picks the smallest advertised model by parameter size |
 | `apiKey` | `"{env:OMLX_API_KEY}"` | `{env:NAME}` expanded; empty means no Authorization header |
-| `timeoutMs` | `1500` | Per-request timeout; use 20000+ for a large judge |
+| `timeoutMs` | `5000` | Per-request timeout; the 4B judge is usually under 1 s, but cold/first calls can take 3-4 s. Use 20000+ for a large judge |
 | `cacheTtlMs` | `600000` | Verdict cache TTL |
 | `cacheSize` | `128` | LRU entries |
 
@@ -146,7 +158,7 @@ Explicit two-model pool, cost-first, 4B judge:
     "source": "list",
     "models": ["deepseek/deepseek-flash", "deepseek/deepseek-v4-pro"]
   },
-  "judge": { "model": "Qwen3-4B-Instruct-2507-4bit", "timeoutMs": 3000 },
+  "judge": { "model": "Qwen3-4B-Instruct-2507-4bit", "timeoutMs": 5000 },
   "quality": { "overrides": { "deepseek/deepseek-v4-pro": 0.9 } }
 }
 ```

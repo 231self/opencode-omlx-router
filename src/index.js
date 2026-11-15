@@ -1,5 +1,6 @@
 import { readConfig } from "./config.js"
 import { Router, refOf } from "./router.js"
+import { TELEMETRY_EVENTS, Telemetry } from "./telemetry.js"
 import { loadCore } from "./wasm.js"
 
 /**
@@ -31,10 +32,12 @@ export default {
 
     // Hooks are registered so wiring is exercised. The router owns all logic
     // and never logs prompt or message text.
+    const telemetry = config.telemetry?.enabled === false ? null : new Telemetry({ host: "opencode" })
     const router = new Router({
       ctx,
       host: "opencode",
       core,
+      telemetry,
       configOptions: ctx?.options ?? {},
     })
     await register("prompt", (event) => router.prompt(event))
@@ -44,6 +47,19 @@ export default {
       disposers.push(await ctx.tool.hook("execute.after", (event) => router.toolAfter(event)))
     } catch (cause) {
       coreError ??= `tool hook: ${cause?.message ?? cause}`
+    }
+
+    if (telemetry && ctx.event?.subscribe) {
+      const controller = new AbortController()
+      void (async () => {
+        try {
+          const events = ctx.event.subscribe({ types: TELEMETRY_EVENTS, signal: controller.signal })
+          await telemetry.subscribe(events)
+        } catch (cause) {
+          if (config.debug) console.error("[omlx-router] telemetry stopped:", String(cause?.message ?? cause))
+        }
+      })()
+      disposers.push({ dispose: () => controller.abort() })
     }
 
     if (config.debug) {

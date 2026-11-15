@@ -1,5 +1,12 @@
 import { readConfig } from "./config.js"
-import { hostStateDir, listPins, readDecisions, readStats } from "./state.js"
+import {
+  hostStateDir,
+  listPins,
+  readDecisions,
+  readStats,
+  readTurns,
+  summariseTurns,
+} from "./state.js"
 import { VERSION } from "./version.js"
 
 /**
@@ -13,11 +20,15 @@ export function buildStatus({ host = "opencode", env = process.env, core = null 
   let pins = []
   let last = null
   let stats = null
+  let turns = []
+  let timing = null
   let stateError = null
   try {
     pins = listPins(host, env)
     last = readDecisions(host, 1, env)[0] ?? null
     stats = readStats(host, env)
+    turns = readTurns(host, 50, env)
+    timing = summariseTurns(turns, 20)
   } catch (cause) {
     stateError = String(cause?.message ?? cause)
   }
@@ -40,10 +51,30 @@ export function buildStatus({ host = "opencode", env = process.env, core = null 
     pins: pins.length,
     pinModels: pins.slice(0, 3).map((pin) => pin.model ?? pin.chosen ?? null).filter(Boolean),
     last,
+    lastTurn: turns.at(-1) ?? null,
+    timing,
     stats,
     core,
     error: error ?? stateError,
   }
+}
+
+export function formatMilliseconds(value) {
+  const milliseconds = Number(value) || 0
+  if (milliseconds >= 1000) return `${(milliseconds / 1000).toFixed(1)}s`
+  return `${Math.round(milliseconds)}ms`
+}
+
+export function formatTiming(summary) {
+  if (!summary?.count) return null
+  const share = (value) => `${Math.round((Number(value) || 0) * 100)}%`
+  const average = summary.averages
+  return (
+    `local judge ${formatMilliseconds(average.judgeMs)} (${share(summary.shares.judge)}) · ` +
+    `remote model ${formatMilliseconds(average.modelMs)} (${share(summary.shares.model)}) · ` +
+    `tools/other ${formatMilliseconds(average.toolMs)} (${share(summary.shares.tools)}) · ` +
+    `turn ${formatMilliseconds(average.turnMs)} (last ${summary.count})`
+  )
 }
 
 function modelLabel(model) {
@@ -63,6 +94,8 @@ export function formatStatus(status) {
     `core       ${status.core?.abi ? `ABI ${status.core.abi}` : "not loaded"}`,
     `last       ${status.last ? `${status.last.chosen ?? "unknown"} · ${status.last.stage ?? ""} · ${status.last.pinned ? "pinned" : "switched"}` : "none"}`,
   ]
+  const timing = formatTiming(status.timing)
+  if (timing) lines.push(`timing     ${timing}`)
   if (status.error) lines.push(`warning    ${status.error}`)
   return lines.join("\n")
 }

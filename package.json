@@ -50,6 +50,7 @@
     "prepack": "bun run build:wasm",
     "test:e2e": "bun tests/e2e/run.mjs",
     "test:e2e:live": "bun tests/e2e/run.mjs --real-judge --only live-judge",
-    "test:e2e:list": "bun tests/e2e/run.mjs --list"
+    "test:e2e:list": "bun tests/e2e/run.mjs --list",
+    "judge:calibrate": "bun tests/judge-calibration.mjs"
   }
 }

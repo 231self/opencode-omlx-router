@@ -32,12 +32,13 @@ user turn
   → pool: favorites · explicit list · all available models
   → hard gates: tools · vision · context fit · not deprecated
   → deterministic triage (cheap early exits)
-  → oMLX judge: complexity, task, reasoning need, confidence   [1.5 s budget]
+  → oMLX judge: complexity, task, reasoning need, confidence   [5 s budget]
   → scoring under your policy: cost-first · quality-first · latency-first
   → pin policy: keep the incumbent unless the challenger clearly wins
   → session.switchModel(...)
   → context optimiser: prune only when over the chosen model's budget
-  → decision log + /router status, history, explain
+  → decision log + timing (local judge vs remote turn)
+  → /router status, history, timing, explain
 ```
 
 The routing brain is a Rust core compiled to WebAssembly and shipped in the
@@ -243,7 +244,7 @@ Full example: [`config.example.json`](config.example.json).
     "baseURL": "http://127.0.0.1:1234/v1",
     "model": "auto",                      // or an explicit oMLX model id
     "apiKey": "{env:OMLX_API_KEY}",       // oMLX may not require one
-    "timeoutMs": 1500,
+    "timeoutMs": 5000,
     "cacheTtlMs": 600000,
     "cacheSize": 128
   },
@@ -399,7 +400,8 @@ the CLI for headless `opencode run`/`serve`, OpenCode Desktop, and Kilo.
 | `/router on` / `/router off` | Enable or disable routing |
 | `/router policy` | Interactive picker for `cost` / `quality` / `latency`; clears pins |
 | `/router pool` | Resolved models with inferred quality/cost/local flags and exclusion reasons |
-| `/router history [n]` | Recent decisions, including subagents |
+| `/router history [n]` | Recent decisions, including subagents and judge/route time |
+| `/router timing [n]` | Local judge vs remote model vs tool time per turn |
 | `/router explain` | Full trace of this session's last decision |
 | `/router pin` / `/router auto` | Force or release a model pin for this session |
 | `/router judge` | Probe oMLX directly: model, latency, sample verdict |
@@ -417,6 +419,7 @@ omlx-router status
 omlx-router doctor
 omlx-router pool
 omlx-router history 20
+omlx-router timing 20
 omlx-router config get policy
 omlx-router config set policy quality
 ```
@@ -433,8 +436,9 @@ use the `omlx-router` CLI and `config.json`.
 
 ## Privacy
 
-- Decision records store **no prompt, message, or tool-output text** — only
-  signals, model ids, scores, timings, and a hashed session id.
+- Decision and turn records store **no prompt, message, or tool-output text** —
+  only signals, model ids, scores, timings, token counts, cost, and a hashed
+  session id.
 - The only text that leaves the machine is the truncated turn summary in the
   judge request, sent to the `judge.baseURL` you configure (localhost by
   default).
@@ -464,6 +468,7 @@ bun run test:rust      # cargo test
 bun run check          # fmt, clippy, tests, size gate
 bun run test:e2e       # live prompt tests against OpenCode + Kilo (needs oMLX)
 bun run test:e2e:live  # one prompt through the real oMLX judge
+bun run judge:calibrate # real judge verdicts + latency across six cases
 ```
 
 The prompt tests start real OpenCode/Kilo sessions, inject a deterministic

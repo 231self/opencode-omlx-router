@@ -429,8 +429,8 @@ export const SCENARIOS = [
     steps: [
       {
         prompt:
-          'Call the subagent/task tool exactly once and delegate to the explore agent: "Review the JavaScript modules in src/one.js and src/two.js and report the exported names." Do not inspect the files yourself; just call the task tool and report the result.',
-        judge: verdict(3),
+          'Call the subagent/task tool exactly once and delegate to the explore agent: "Inspect src/one.js and src/two.js and report the exported names." Do not inspect the files yourself; just call the task tool and report the result.',
+        judge: verdict(2),
         auto: true,
         timeoutMs: 240000,
         expect: {
@@ -443,7 +443,7 @@ export const SCENARIOS = [
               reason: "first-turn",
               stage: "judge/cost",
               policy: "cost",
-              complexity: 3,
+              complexity: 2,
               assistantModel: FLASH,
             }),
             decision({
@@ -454,7 +454,7 @@ export const SCENARIOS = [
               reason: "first-turn",
               stage: "judge/latency",
               policy: "latency",
-              complexity: 3,
+              complexity: 2,
               assistantModel: FLASH,
             }),
           ],
@@ -482,7 +482,7 @@ export const SCENARIOS = [
               reason: "first-turn",
               stage: "judge/quality",
               policy: "quality",
-              complexity: 3,
+              complexity: 4,
               applied: "boundary",
               assistantMatchesChosen: false,
               assistantModel: FLASH,
@@ -545,6 +545,49 @@ export const SCENARIOS = [
   },
 
   {
+    id: "judge-underclassifies",
+    host: "opencode",
+    notes: "a weak judge verdict is raised to the deterministic signal floor",
+    config: { policy: "quality" },
+    steps: [
+      {
+        prompt:
+          "Review this authentication design for security issues: tokens are stored in localStorage. Do not use tools; list the risks and fixes.",
+        judge: {
+          task: "review",
+          complexity: 1,
+          needsTools: false,
+          needsVision: false,
+          contextNeed: "small",
+          reasoningNeed: "low",
+          confidence: 0.9,
+        },
+        expect: {
+          judgeCalls: 1,
+          decisions: [
+            decision({
+              chosen: PRO,
+              source: "judge",
+              reason: "first-turn",
+              stage: "judge/quality",
+              policy: "quality",
+              complexity: 2,
+              verdict: {
+                task: "review",
+                complexity: 2,
+                needsTools: true,
+                reasoningNeed: "high",
+                contextNeed: "small",
+              },
+              assistantModel: PRO,
+            }),
+          ],
+        },
+      },
+    ],
+  },
+
+  {
     id: "disabled",
     host: "opencode",
     notes: "the master switch leaves the host session untouched and writes no decision",
@@ -571,7 +614,7 @@ export const SCENARIOS = [
       judge: {
         baseURL: "http://127.0.0.1:1234/v1",
         model: "auto",
-        timeoutMs: 120000,
+        timeoutMs: 5000,
       },
     },
     steps: [
@@ -582,6 +625,7 @@ export const SCENARIOS = [
         timeoutMs: 240000,
         expect: {
           judgeCalls: null,
+          timing: { judgeMaxMs: 10000, modelMinMs: 1 },
           decisions: [
             decision({
               source: "judge",

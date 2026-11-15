@@ -36,14 +36,6 @@ import { startStubJudge } from "./lib/stub-judge.mjs"
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 const REPO = path.resolve(HERE, "../..")
 
-class StepError extends Error {
-  constructor(message, detail = {}) {
-    super(message)
-    this.name = "StepError"
-    this.detail = detail
-  }
-}
-
 function parseArgs(argv) {
   const options = { only: null, host: null, keep: false, realJudge: false, list: false, packageRoot: null }
   for (let index = 0; index < argv.length; index += 1) {
@@ -100,7 +92,7 @@ function assistantRefs(summary) {
   return (summary.assistantModels ?? []).map(refString).filter(Boolean)
 }
 
-function readDecisions(file) {
+function readJsonLines(file) {
   try {
     return fs
       .readFileSync(file, "utf8")
@@ -120,10 +112,10 @@ function readDecisions(file) {
   }
 }
 
-async function waitForDecisions(file, previous, expectedNew, timeoutMs = 4000) {
+async function waitForLines(file, previous, expectedNew, timeoutMs = 4000) {
   const deadline = Date.now() + timeoutMs
   for (;;) {
-    const records = readDecisions(file)
+    const records = readJsonLines(file)
     if (expectedNew === 0 || records.length > previous || Date.now() > deadline) return records
     await Bun.sleep(50)
   }
@@ -139,10 +131,6 @@ function assertEqual(failures, label, actual, expected) {
   if (expected !== undefined && expected !== null && actual !== expected) {
     failures.push(`${label}: expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`)
   }
-}
-
-function findSessionID(ids, hash) {
-  return ids.find((id) => sessionHash(id) === hash) ?? null
 }
 
 async function runScenario(scenario, { stub, root, keep, packageRoot }) {
@@ -187,7 +175,8 @@ async function runScenario(scenario, { stub, root, keep, packageRoot }) {
     const step = scenario.steps[index]
     stub.set(step.judge)
     stub.reset()
-    const before = readDecisions(decisionsFile).length
+    const before = readJsonLines(decisionsFile).length
+    const stepStarted = Date.now()
 
     const args = buildArgs(host, {
       prompt: step.prompt,
@@ -205,10 +194,17 @@ async function runScenario(scenario, { stub, root, keep, packageRoot }) {
     })
 
     const expectedNew = step.expect?.decisions?.length ?? 0
-    const all = await waitForDecisions(decisionsFile, before, expectedNew)
+    const all = await waitForLines(decisionsFile, before, expectedNew)
     const records = all.slice(before)
     const ids = parseSessionIDs(`${result.stdout}\n${result.stderr}`)
     const idByHash = new Map(ids.map((id) => [sessionHash(id), id]))
+    const turnsFile = path.join(state, host, "turns.jsonl")
+    const turnsBefore = readJsonLines(turnsFile).length
+    const turnRecords =
+      host === "opencode"
+        ? (await waitForLines(turnsFile, turnsBefore, expectedNew || 1))
+            .filter((turn) => idByHash.has(turn.session) && Number(turn.ts) >= stepStarted)
+        : []
 
     // The first decision with role=root identifies the top-level session when
     // the host did not expose it in the event stream.
@@ -226,6 +222,28 @@ async function runScenario(scenario, { stub, root, keep, packageRoot }) {
     const expectedCalls = step.expect?.judgeCalls
     if (expectedCalls !== undefined && expectedCalls !== null && stub.calls !== expectedCalls) {
       failures.push(`judge calls: expected ${expectedCalls}, got ${stub.calls}`)
+    }
+    if (host === "opencode") {
+      const rootTurn = turnRecords.find((turn) => turn.role === "root")
+      if (!rootTurn) {
+        failures.push("no turn timing record (telemetry)")
+      } else {
+        if (!(Number(rootTurn.executionMs) > 0)) failures.push(`turn executionMs ${rootTurn.executionMs}`)
+        if (!(Number(rootTurn.modelMs) > 0)) failures.push(`turn modelMs ${rootTurn.modelMs}`)
+        if (Number(rootTurn.turnMs) + 1 < Number(rootTurn.executionMs)) {
+          failures.push(`turnMs ${rootTurn.turnMs} is shorter than executionMs ${rootTurn.executionMs}`)
+        }
+        if (Number(rootTurn.judgeMs) > Number(rootTurn.routeMs) + 100) {
+          failures.push(`judgeMs ${rootTurn.judgeMs} exceeds routeMs ${rootTurn.routeMs}`)
+        }
+        const expectedTiming = step.expect?.timing
+        if (expectedTiming?.judgeMaxMs && Number(rootTurn.judgeMs) > expectedTiming.judgeMaxMs) {
+          failures.push(`judgeMs ${rootTurn.judgeMs} over ${expectedTiming.judgeMaxMs}`)
+        }
+        if (expectedTiming?.modelMinMs && Number(rootTurn.modelMs) < expectedTiming.modelMinMs) {
+          failures.push(`modelMs ${rootTurn.modelMs} under ${expectedTiming.modelMinMs}`)
+        }
+      }
     }
 
     const expectedDecisions = step.expect?.decisions ?? []
@@ -288,6 +306,17 @@ async function runScenario(scenario, { stub, root, keep, packageRoot }) {
       if (expected.judgeUsed !== undefined) {
         assertEqual(failures, "judge.used", Boolean(record.judge?.used), expected.judgeUsed)
       }
+      if (expected.verdict) {
+        if (!record.verdict) {
+          failures.push("decision is missing the effective verdict")
+        } else {
+          for (const key of ["task", "complexity", "needsTools", "reasoningNeed", "contextNeed"]) {
+            if (expected.verdict[key] !== undefined) {
+              assertEqual(failures, `verdict.${key}`, record.verdict[key], expected.verdict[key])
+            }
+          }
+        }
+      }
 
       const sessionID = idByHash.get(record.session) ?? (record.role === "root" ? rootSessionID : null)
       if (!sessionID) {
@@ -335,6 +364,7 @@ async function runScenario(scenario, { stub, root, keep, packageRoot }) {
       chosen: records.map((record) => modelID(record.chosen)).join(", "),
       source: records.map((record) => `${record.stage ?? record.source}/${record.reason}`).join(", "),
       records,
+      turns: turnRecords,
       details,
       result,
     })
@@ -360,7 +390,11 @@ function printResult(result) {
   if (result.ok) {
     for (const step of result.steps) {
       const summary = step.chosen ? `${step.chosen} · ${step.source}` : "no decision record"
-      console.log(`PASS  ${name} [${result.scenario.host ?? "opencode"}] step ${step.index}: ${summary}`)
+      const rootTurn = (step.turns ?? []).find((turn) => turn.role === "root")
+      const timing = rootTurn
+        ? ` · judge ${rootTurn.judgeMs}ms · model ${Math.round(rootTurn.modelMs)}ms`
+        : ""
+      console.log(`PASS  ${name} [${result.scenario.host ?? "opencode"}] step ${step.index}: ${summary}${timing}`)
     }
     return
   }

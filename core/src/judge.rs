@@ -77,15 +77,27 @@ pub fn build(request: &RouteRequest, envelope: &Envelope) -> (String, String) {
     let prompt = format!(
         "You classify one turn for a coding agent. Reply with JSON only, no prose.\n\
 \n\
+Rules:\n\
+- complexity 1=one-line question, 2=small edit, 3=multi-file change, 4=hard debugging or design, 5=deep research or large refactor.\n\
+- needsTools=true for file, shell, test, or repo work.\n\
+- needsVision only when images are present.\n\
+- contextNeed: small under 15k tokens, medium 15k-60k, large over 60k.\n\
+- reasoningNeed: low for direct answers, medium for edits, high for debugging, design, or security.\n\
+- Choose values for the actual turn. Do not copy the example values.\n\
+\n\
+Examples:\n\
+Turn: \"What does the --verbose flag do?\"\n\
+Output: {{\"task\":\"research\",\"complexity\":1,\"needsTools\":false,\"needsVision\":false,\"contextNeed\":\"small\",\"reasoningNeed\":\"low\",\"confidence\":0.9}}\n\
+Turn: \"Debug the panic in src/lexer.rs and add a regression test.\"\n\
+Output: {{\"task\":\"debug\",\"complexity\":4,\"needsTools\":true,\"needsVision\":false,\"contextNeed\":\"small\",\"reasoningNeed\":\"high\",\"confidence\":0.9}}\n\
+\n\
 Turn: \"{}\"\n\
 Signals: prompt_tokens={}, last_context_tokens={}, images={}, tool_failures={}, turn_class_hint={}, code={}, error={}, planning={}, review={}\n\
 \n\
 Models available (context only; do not choose one):\n{}\n\
 \n\
 JSON schema:\n\
-{{\"task\":\"trivial|edit|debug|refactor|plan|research|review|ui\",\"complexity\":1,\"needsTools\":true,\"needsVision\":false,\"contextNeed\":\"small|medium|large\",\"reasoningNeed\":\"low|medium|high\",\"confidence\":0.0}}\n\
-\n\
-Rules: complexity 1=one-line question, 2=small edit, 3=multi-file change, 4=hard debugging or design, 5=deep research or large refactor. needsTools=true for file, shell, test, or repo work. needsVision only when images are present. confidence is 0..1.",
+{{\"task\":\"trivial|edit|debug|refactor|plan|research|review|ui\",\"complexity\":1,\"needsTools\":true,\"needsVision\":false,\"contextNeed\":\"small|medium|large\",\"reasoningNeed\":\"low|medium|high\",\"confidence\":0.0}}",
         summarise(&request.turn.prompt_text),
         envelope.prompt_tokens,
         request.turn.last_context_tokens,
@@ -181,6 +193,8 @@ mod tests {
         let envelope = envelope::build(&request.turn);
         let (prompt, _) = build(&request, &envelope);
         assert!(prompt.contains("JSON schema"));
+        assert!(prompt.contains("Examples:"));
+        assert!(prompt.contains("Do not copy"));
         assert!(prompt.contains("acme/small"));
         assert!(prompt.chars().count() < 3000);
     }

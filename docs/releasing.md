@@ -42,7 +42,8 @@ Artifacts:
 3. Update README install/usage if behaviour changed.
 4. `bun run check`.
 5. `bun run test:e2e` (prompt tests against OpenCode and Kilo) and, with oMLX
-   running, `bun run test:e2e:live` (real judge).
+   running, `bun run judge:calibrate` (real judge verdicts/latency) and
+   `bun run test:e2e:live` (real judge routing).
 6. `jj describe -m "release: v0.1.0"`, `jj new`.
 
 ## Publish to npm

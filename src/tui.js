@@ -11,10 +11,12 @@ import {
   clearPin,
   clearPins,
   readDecisions,
+  readTurns,
   sessionHash,
+  summariseTurns,
   writePin,
 } from "./state.js"
-import { buildStatus, formatStatus } from "./status.js"
+import { buildStatus, formatMilliseconds, formatStatus, formatTiming } from "./status.js"
 
 const HOST = "opencode"
 
@@ -269,8 +271,28 @@ async function runCommand(context, input) {
       const lines = decisions.map((record) => {
         const when = new Date(record.ts ?? Date.now()).toLocaleTimeString()
         const role = record.role === "subagent" ? `sub(${record.agent ?? "?"})` : "root"
-        return `${when} ${role} ${record.chosen ?? "?"} ${record.pinned ? "pinned" : "switched"} ${record.stage ?? ""}`
+        const timing = record.timing ?? {}
+        return `${when} ${role} ${record.chosen ?? "?"} ${record.pinned ? "pinned" : "switched"} ${record.stage ?? ""} · judge ${formatMilliseconds(timing.judgeMs ?? record.judge?.ms ?? 0)} route ${formatMilliseconds(timing.routeMs ?? 0)}`
       })
+      await show(context, lines.join("\n"))
+      return
+    }
+    case "timing": {
+      const limit = Number(rest[0]) || 20
+      const turns = readTurns(HOST, limit)
+      if (turns.length === 0) {
+        await show(context, "no turn timings recorded yet")
+        return
+      }
+      const summary = summariseTurns(turns, limit)
+      const lines = [formatTiming(summary) ?? "no turn timings", ""]
+      for (const turn of turns.slice(-10)) {
+        const when = new Date(turn.ts ?? Date.now()).toLocaleTimeString()
+        const role = turn.role === "subagent" ? `sub(${turn.agent || "?"})` : "root"
+        lines.push(
+          `${when} ${role} ${turn.usedModel ?? turn.model ?? "?"} · judge ${formatMilliseconds(turn.judgeMs)} · model ${formatMilliseconds(turn.modelMs)} · tools ${formatMilliseconds(turn.toolMs)} · turn ${formatMilliseconds(turn.turnMs)}`,
+        )
+      }
       await show(context, lines.join("\n"))
       return
     }
@@ -377,6 +399,7 @@ async function runCommand(context, input) {
           "/router policy [cost|quality|latency]",
           "/router pool",
           "/router history [n]",
+          "/router timing [n]",
           "/router explain",
           "/router pin [provider/model]",
           "/router auto",

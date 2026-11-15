@@ -156,14 +156,19 @@ and the model exported from the host session. See
 
 Results on OpenCode 2.3.0 / Kilo 7.6.2 / DeepSeek Flash + Pro:
 
-- 13 stub scenarios, 18 steps, all passing.
+- 14 stub scenarios, 19 steps, all passing.
 - Same-turn switching, cost/quality/latency policies, pin threshold, upward
   complexity jump, forced user override, subagent `explore` policy, judge
   timeout/HTTP fallback, malformed-verdict retry, disabled mode, and Kilo
   boundary semantics are all checked against the host's actual assistant model.
-- `bun run test:e2e:live` routed a planning prompt through the real oMLX 27B
-  judge: verdict complexity 4 in **8.9 s**, chosen `deepseek/deepseek-v4-pro`
-  under cost policy with the quality floor, `applied: "same-turn"`.
+- `bun run test:e2e:live` routes a planning prompt through the real judge. With
+  the 27B it took 8.9 s; with the pulled 4B the final run took **0.8 s** (3.4 s
+  on the cold call) while the remote turn took **62.6 s**. Both chose
+  `deepseek/deepseek-v4-pro` under cost policy with the quality floor,
+  `applied: "same-turn"`.
+- Every OpenCode step now asserts a `turns.jsonl` record and prints the split.
+  A stub-judge `judge-cost` turn measured route 19 ms (judge 8 ms) vs remote
+  model 6.5 s and tools 45 ms.
 
 The first run exposed four bugs that fake-based unit tests missed:
 
@@ -212,3 +217,49 @@ Verified against the live oMLX 0.6.4 admin API without starting a large download
   made **no** download request. `judge status` and consent gating are covered by
   fake-server tests; the download path uses `/api/hf/download` and
   `/api/hf/tasks` and triggers oMLX model rediscovery on completion.
+
+## 4B judge calibration (2026-11-15)
+
+The original judge prompt made `Qwen3-4B-Instruct-2507-4bit` copy the schema's
+`"complexity":1` example. After adding few-shot examples, an explicit "do not
+copy" rule, and a deterministic floor from the envelope signals:
+
+| Case | Task | Raw → effective complexity | Reasoning | Context | Warm latency |
+|---|---|---|---|---|---|
+| simple question | research | 1 → 2 | low | small | 0.9 s |
+| small edit | edit | 2 → 3 | medium | small | 0.7 s |
+| debug trace | debug | 4 → 4 | high | small | 0.7 s |
+| planning | refactor | 3 → 4 | high | medium | 0.6 s |
+| security review | review | 2 → 4 | high | small | 0.6 s |
+| 90k context | refactor | 2 → 3 | medium | large | 0.6 s |
+
+`bun tests/judge-calibration.mjs` reproduces this and compares explicit models
+with `--model`. Warm calls are 0.6-0.9 s; the cold first call measured 2.8 s, so
+the default timeout is 5 s. The 27B baseline was 7-23 s and failed the review
+case with unparsable JSON; the 4B is the intended judge.
+
+The deterministic `reconcile` step is important: the 4B still occasionally
+under-classifies, and the envelope floor prevents a debug/review/planning turn
+from being downgraded. Marker matching uses word boundaries so `Inspect` no
+longer matches `spec`.
+
+## Telemetry (2026-11-15)
+
+The adapter subscribes to `session.execution.*` and `session.step.*` events and
+writes one `turns.jsonl` record per turn. Decision records also carry
+`timing.routeMs/judgeMs/coreMs/switchMs` and the effective `verdict`.
+
+Fields in a turn record:
+
+- `routeMs`, `judgeMs`, `coreMs`, `switchMs` — local routing cost
+- `executionMs` — from execution start to succeeded/failed
+- `modelMs` — sum of model-step durations
+- `toolMs` — `executionMs - modelMs`
+- `ttftMs` — first step's time to first token
+- `turnMs` — prompt admission to execution end
+- `steps`, `tokens`, `cost`, `model`, `usedModel`
+
+`/router timing`, `omlx-router timing`, and the `timing` line in `/router
+status` show which side dominates. Kilo currently records route/judge timing in
+decisions but not the host turn record, because its V1 event stream needs a
+separate SSE adapter.

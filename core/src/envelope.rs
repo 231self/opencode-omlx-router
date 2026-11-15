@@ -73,6 +73,7 @@ const PLANNING_MARKERS: &[&str] = &[
     "tradeoff",
     "proposal",
     "spec",
+    "specification",
 ];
 
 const REVIEW_MARKERS: &[&str] = &[
@@ -87,6 +88,29 @@ const REVIEW_MARKERS: &[&str] = &[
 
 fn contains_any(haystack: &str, needles: &[&str]) -> bool {
     needles.iter().any(|needle| haystack.contains(needle))
+}
+
+fn contains_word(haystack: &str, word: &str) -> bool {
+    haystack
+        .split(|character: char| !character.is_alphanumeric() && character != '-')
+        .any(|token| token == word)
+}
+
+/// Word-like markers match whole tokens; punctuation and phrases use substring
+/// matching. Without this, `Inspect` would match `spec` and `prefix` would
+/// match `fix`.
+fn contains_marker(haystack: &str, marker: &str) -> bool {
+    if marker.chars().all(|character| character.is_alphanumeric()) {
+        contains_word(haystack, marker)
+    } else {
+        haystack.contains(marker)
+    }
+}
+
+fn contains_any_marker(haystack: &str, needles: &[&str]) -> bool {
+    needles
+        .iter()
+        .any(|needle| contains_marker(haystack, needle))
 }
 
 /// Approximate token count: ASCII at ~4 chars/token, CJK at ~1.6 chars/token.
@@ -112,10 +136,10 @@ pub fn build(turn: &TurnInfo) -> Envelope {
 
     let signals = Signals {
         code: contains_any(&text, CODE_MARKERS),
-        agentic: contains_any(&text, AGENTIC_MARKERS),
-        error_trace: contains_any(&text, ERROR_MARKERS),
-        planning: contains_any(&text, PLANNING_MARKERS),
-        review: contains_any(&text, REVIEW_MARKERS),
+        agentic: contains_any_marker(&text, AGENTIC_MARKERS),
+        error_trace: contains_any_marker(&text, ERROR_MARKERS),
+        planning: contains_any_marker(&text, PLANNING_MARKERS),
+        review: contains_any_marker(&text, REVIEW_MARKERS),
         trivial: false,
         has_images: turn.images > 0,
         large_context: estimated_input_tokens > 60_000,
@@ -156,6 +180,7 @@ pub fn build(turn: &TurnInfo) -> Envelope {
     complexity += u8::from(signals.code);
     complexity += u8::from(signals.agentic);
     complexity += u8::from(signals.error_trace);
+    complexity += u8::from(signals.planning || signals.review);
     complexity += u8::from(estimated_input_tokens > 8_000);
     complexity += u8::from(turn.tool_failures > 0);
     complexity = complexity.clamp(1, 5);
@@ -209,6 +234,32 @@ mod tests {
             "design an approach and plan the refactor of src/lib.rs",
         ));
         assert_eq!(envelope.turn_class, "planning");
+    }
+
+    #[test]
+    fn markers_use_word_boundaries() {
+        let inspect = build(&turn("Inspect the files"));
+        assert!(!inspect.signals.planning);
+        let prefix = build(&turn("prefix the string"));
+        assert!(!prefix.signals.agentic);
+        let preview = build(&turn("preview the diff"));
+        assert!(!preview.signals.review);
+        let design = build(&turn("design the API"));
+        assert!(design.signals.planning);
+        let specification = build(&turn("write the specification"));
+        assert!(specification.signals.planning);
+        let review = build(&turn("review the code"));
+        assert!(review.signals.review);
+    }
+
+    #[test]
+    fn review_and_planning_raise_complexity() {
+        let review = build(&turn("review the authentication middleware in src/auth.rs"));
+        assert!(review.signals.review);
+        assert!(review.complexity_hint >= 3);
+        let planning = build(&turn("design a migration plan for src/parse.rs"));
+        assert!(planning.signals.planning);
+        assert!(planning.complexity_hint >= 3);
     }
 
     #[test]

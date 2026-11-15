@@ -8,7 +8,9 @@ The harness then asserts:
 2. the model the host **actually used** for the turn (exported from the host
    session), and
 3. for Kilo, that the current turn stayed on the old model and the session
-   moved to the new one at the boundary.
+   moved to the new one at the boundary, and
+4. for OpenCode, that `turns.jsonl` has a timing record with routing, judge,
+   remote model, and tool time. The PASS line prints the judge/model split.
 
 Unit tests cover the Rust core and the adapters with fakes. These tests cover
 the parts that only fail in a real host: hook wiring, `switchModel`, session
@@ -70,6 +72,7 @@ failure the workspace is kept and printed; on success it is removed unless
 | `complexity-jump` | OpenCode | A two-step upward jump breaks the pin and escalates. |
 | `judge-unreachable` | OpenCode | A dead judge endpoint falls back to deterministic heuristics. |
 | `judge-malformed` | OpenCode | Unparsable output is retried once, then falls back. |
+| `judge-underclassifies` | OpenCode | A deliberately weak verdict is raised to the signal floor before routing. |
 | `user-override` | OpenCode | An explicit `--model` becomes a forced pin that bypasses the judge and persists. |
 | `favorites-pool` | OpenCode | The default `favorites` pool source reads the host favorites file. |
 | `subagent-explore` | OpenCode | A child session uses the `explore` agent's latency policy independently. |
@@ -111,5 +114,7 @@ not:
 - A downward complexity change was treated as a "jump" and forced a switch,
   and a same-model selection could be recorded as a switch.
 - A rejected `switchModel` still recorded `applied: "same-turn"`.
+- `Inspect` matched the `spec` planning marker and classified a simple
+  inspection as planning; marker matching now uses word boundaries.
 
 All four are fixed; the scenarios above are the regression tests.

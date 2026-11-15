@@ -140,6 +140,15 @@ fn decide(
             "cached": request.judge.cached,
             "confidence": verdict.confidence,
         },
+        "verdict": {
+            "task": verdict.task,
+            "complexity": verdict.complexity,
+            "needsTools": verdict.needs_tools,
+            "needsVision": verdict.needs_vision,
+            "contextNeed": verdict.context_need,
+            "reasoningNeed": verdict.reasoning_need,
+            "confidence": verdict.confidence,
+        },
         "top": selection.top,
         "optimiser": null,
         "applied": "same-turn",
@@ -241,7 +250,7 @@ pub fn handle(request: RouteRequest) -> Value {
         source = "escalation";
         mode = Mode::Escalate;
     } else if let Some(provided) = request.judge.verdict.clone() {
-        verdict = triage::sanitize(provided);
+        verdict = triage::reconcile(triage::sanitize(provided), &envelope);
         source = "judge";
     }
 
@@ -369,6 +378,15 @@ mod tests {
             .as_array()
             .is_some_and(|top| !top.is_empty()));
         assert_eq!(value["log"]["applied"], "same-turn");
+    }
+
+    #[test]
+    fn decision_log_contains_the_effective_verdict() {
+        let value = handle(request(vec![model("cheap", 0.1, 0.2)]));
+        assert_eq!(value["action"], "decide");
+        assert!(value["log"]["verdict"]["complexity"].as_u64().is_some());
+        assert!(value["log"]["verdict"]["needsTools"].is_boolean());
+        assert!(value["log"]["verdict"]["reasoningNeed"].is_string());
     }
 
     #[test]

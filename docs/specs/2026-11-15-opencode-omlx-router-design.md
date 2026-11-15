@@ -257,7 +257,7 @@ JSON, or plan-application errors cause a logged pass-through, never a failed tur
    `turnClass` of `trivial`, `routine`, `tool_continuation`, `agentic`,
    `planning`, or `review`, used by triage and by the pin's "turn class changed"
    rule.
-6. If `need_judge`: adapter calls oMLX (timeout 1500 ms), caches the parsed
+6. If `need_judge`: adapter calls oMLX (timeout 5000 ms), caches the parsed
    verdict, and calls `route` again.
 7. Adapter applies the decision with `ctx.session.switchModel` (providerID, id,
    variant), writes the pin, appends the decision record, and stores
@@ -466,7 +466,7 @@ edits work predictably.
     "baseURL": "http://127.0.0.1:1234/v1",
     "model": "auto",
     "apiKey": "{env:OMLX_API_KEY}",
-    "timeoutMs": 1500,
+    "timeoutMs": 5000,
     "cacheTtlMs": 600000,
     "cacheSize": 128
   },

@@ -84,6 +84,40 @@ pub fn sanitize(mut verdict: Verdict) -> Verdict {
     verdict
 }
 
+fn severity(value: &str) -> u8 {
+    match value {
+        "high" => 3,
+        "medium" => 2,
+        _ => 1,
+    }
+}
+
+fn context_severity(value: &str) -> u8 {
+    match value {
+        "large" => 3,
+        "medium" => 2,
+        _ => 1,
+    }
+}
+
+/// Never let a weak judge downgrade the deterministic signals. The judge adds
+/// nuance, but code, errors, planning, review, and large context set a floor.
+pub fn reconcile(mut verdict: Verdict, envelope: &Envelope) -> Verdict {
+    let heuristic = heuristic(envelope);
+    verdict.complexity = verdict.complexity.max(heuristic.complexity).clamp(1, 5);
+    if severity(&heuristic.reasoning_need) > severity(&verdict.reasoning_need) {
+        verdict.reasoning_need = heuristic.reasoning_need;
+    }
+    if context_severity(&heuristic.context_need) > context_severity(&verdict.context_need) {
+        verdict.context_need = heuristic.context_need;
+    }
+    verdict.needs_tools |= heuristic.needs_tools;
+    if verdict.task == "trivial" && envelope.turn_class != "trivial" {
+        verdict.task = heuristic.task;
+    }
+    verdict
+}
+
 /// For trivial turns, force a cheap classification.
 pub fn trivial(envelope: &Envelope) -> Verdict {
     Verdict {
@@ -128,6 +162,107 @@ mod tests {
         assert_eq!(verdict.confidence, 1.0);
         assert_eq!(verdict.task, "edit");
         assert_eq!(verdict.reasoning_need, "medium");
+    }
+
+    #[test]
+    fn reconcile_raises_judge_underclassification() {
+        let envelope = envelope::build(&TurnInfo {
+            prompt_text: "Debug the panic in src/lexer.rs and add a test".to_string(),
+            ..TurnInfo::default()
+        });
+        let lowered = Verdict {
+            task: "debug".to_string(),
+            complexity: 1,
+            needs_tools: false,
+            context_need: "small".to_string(),
+            reasoning_need: "low".to_string(),
+            confidence: 0.9,
+            ..Verdict::default()
+        };
+        let verdict = reconcile(lowered, &envelope);
+        assert!(verdict.complexity >= 3);
+        assert_eq!(verdict.reasoning_need, "high");
+        assert!(verdict.needs_tools);
+    }
+
+    #[test]
+    fn reconcile_raises_review_and_planning_underclassification() {
+        let review_envelope = envelope::build(&TurnInfo {
+            prompt_text: "Review src/auth.rs for security issues".to_string(),
+            ..TurnInfo::default()
+        });
+        let review = reconcile(
+            Verdict {
+                task: "review".to_string(),
+                complexity: 1,
+                needs_tools: false,
+                context_need: "small".to_string(),
+                reasoning_need: "low".to_string(),
+                confidence: 0.9,
+                ..Verdict::default()
+            },
+            &review_envelope,
+        );
+        assert!(review.complexity >= 3);
+        assert_eq!(review.reasoning_need, "high");
+        assert!(review.needs_tools);
+
+        let planning_envelope = envelope::build(&TurnInfo {
+            prompt_text: "Design a migration plan for src/parse.rs".to_string(),
+            ..TurnInfo::default()
+        });
+        let planning = reconcile(
+            Verdict {
+                task: "plan".to_string(),
+                complexity: 1,
+                needs_tools: false,
+                context_need: "small".to_string(),
+                reasoning_need: "low".to_string(),
+                confidence: 0.9,
+                ..Verdict::default()
+            },
+            &planning_envelope,
+        );
+        assert!(planning.complexity >= 3);
+        assert_eq!(planning.reasoning_need, "high");
+        assert!(planning.needs_tools);
+    }
+
+    #[test]
+    fn reconcile_lifts_large_context() {
+        let envelope = envelope::build(&TurnInfo {
+            prompt_text: "continue the refactor".to_string(),
+            last_context_tokens: 90_000,
+            ..TurnInfo::default()
+        });
+        let lowered = Verdict {
+            task: "refactor".to_string(),
+            complexity: 1,
+            context_need: "small".to_string(),
+            reasoning_need: "low".to_string(),
+            ..Verdict::default()
+        };
+        let verdict = reconcile(lowered, &envelope);
+        assert!(verdict.complexity >= 3);
+        assert_eq!(verdict.context_need, "large");
+    }
+
+    #[test]
+    fn reconcile_keeps_a_simple_turn_simple() {
+        let envelope = envelope::build(&TurnInfo {
+            prompt_text: "what is this?".to_string(),
+            ..TurnInfo::default()
+        });
+        let judged = Verdict {
+            task: "research".to_string(),
+            complexity: 1,
+            context_need: "small".to_string(),
+            reasoning_need: "low".to_string(),
+            ..Verdict::default()
+        };
+        let verdict = reconcile(judged, &envelope);
+        assert_eq!(verdict.complexity, 1);
+        assert_eq!(verdict.reasoning_need, "low");
     }
 
     #[test]

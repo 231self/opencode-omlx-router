@@ -10,7 +10,7 @@ First release candidate.
   prompt hook.
 - Deterministic Rust/WASM decision core: turn envelope, triage, scoring,
   cache-aware pinning, optimiser planning.
-- oMLX small-model judge with automatic smallest-model selection, 1.5 s default
+- oMLX small-model judge with automatic smallest-model selection, 5 s default
   timeout, LRU verdict cache, repair retry, and deterministic fallback.
 - Judge provisioning with explicit consent: TUI/CLI offer, model metadata and
   size before confirmation, oMLX admin download, progress, cancel, and
@@ -19,7 +19,13 @@ First release candidate.
   stub, multi-turn pin/threshold/jump/override scenarios, subagent policy,
   judge failure and malformed-output fallbacks, disabled mode, Kilo boundary
   semantics, and a real-oMLX judge smoke test. Each step asserts the decision
-  record and the model the host actually used.
+  record, the model the host actually used, and per-turn timing.
+- Per-turn telemetry from host events: routing, local judge, remote model,
+  tool/other, time to first token, steps, tokens, and cost. `/router timing`,
+  `omlx-router timing`, and `/router status` show the split; records are
+  `turns.jsonl` with no prompt text.
+- `tests/judge-calibration.mjs` measures the real judge's verdicts and latency
+  on simple/edit/debug/planning/review/large-context cases.
 - Pool sources: host favorites (default), explicit list, all available models;
   include/exclude globs; tool, context, and status filters; local-model guard.
 - Policies: cost-first (default), quality-first, latency-first, with per-agent
@@ -32,14 +38,24 @@ First release candidate.
 - Subagent routing: role detection, agent policies, explicit agent-model forced
   pins, parent-model tie-break, independent pins and escalation.
 - OpenCode TUI `/router` command and palette entry: status, on/off, interactive
-  policy picker, pool, history, explain, pin/auto, judge probe, subagents.
+  policy picker, pool, history, timing, explain, pin/auto, judge probe,
+  subagents.
 - Kilo V1 shim: routes at the next request boundary through the SDK transport,
   best-effort optimiser transform, boundary-labelled decisions.
-- `omlx-router` CLI: status, config get/set, history, doctor, pool.
+- `omlx-router` CLI: status, config get/set, history, timing, doctor, pool.
 - Apache-2.0 license, CI (rustfmt, clippy, Rust tests, wasm build, Bun tests,
   wasm size gate), and user documentation.
 
 ### Fixed
+
+- The 4B judge copied the schema's `complexity: 1` example and under-classified
+  debug, review, and planning turns. The judge prompt now uses few-shot examples
+  and an explicit "do not copy" rule; the core also raises the judge verdict to
+  a deterministic floor from code, error, planning, review, and context signals.
+- Marker matching now uses word boundaries for word-like markers, so `Inspect`
+  no longer matches `spec` and `prefix` no longer matches `fix`.
+- The default judge timeout is 5 s: the 4B is usually under 1 s but cold calls
+  measured 3.4 s.
 
 - The OpenCode V2 context hook only reports a model's provider and id. The
   adapter now fills in limits from the live catalog, so the optimiser no longer

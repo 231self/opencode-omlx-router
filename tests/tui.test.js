@@ -5,6 +5,7 @@ import path from "node:path"
 
 import tui from "../src/tui.js"
 import { readConfig, saveConfig } from "../src/config.js"
+import { appendTurn } from "../src/state.js"
 
 function environment() {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "omlx-router-tui-"))
@@ -165,4 +166,29 @@ test("/router judge pull does not download when consent is declined", async () =
     globalThis.fetch = original
   }
   expect(fake.calls.some((call) => call.path === "/admin/api/hf/download")).toBe(false)
+})
+
+test("/router timing reports local judge vs remote model time", async () => {
+  const { dir } = environment()
+  appendTurn(
+    "opencode",
+    {
+      ts: Date.now(),
+      role: "root",
+      usedModel: "deepseek/deepseek-flash",
+      turnMs: 10_000,
+      routeMs: 1_000,
+      judgeMs: 800,
+      modelMs: 7_000,
+      toolMs: 2_000,
+    },
+    { OMLX_ROUTER_STATE: path.join(dir, "state") },
+  )
+  const { context, messages, command } = fakeContext()
+  tui.setup(context)
+  await command().run("timing")
+  const text = messages.map((entry) => String(entry.message)).join("\n")
+  expect(text).toContain("local judge 800ms")
+  expect(text).toContain("remote model 7.0s")
+  expect(text).toContain("turn 10.0s")
 })
