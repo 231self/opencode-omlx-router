@@ -21,9 +21,13 @@ test("route rejects ABI mismatch", async () => {
   expect(result.reason).toBe("abi_mismatch")
 })
 
-test("optimise stub returns an empty plan", async () => {
+test("optimise returns an empty plan inside budget", async () => {
   const core = await loadCore()
-  const result = core.optimise({ abi: 1, messages: [] })
+  const result = core.optimise({
+    abi: 1,
+    model: { limit: { context: 100000, output: 8192 } },
+    messages: [],
+  })
   expect(result.plan).toEqual([])
   expect(result.stats.overflow).toBe(false)
 })

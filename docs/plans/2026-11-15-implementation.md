@@ -65,6 +65,11 @@ same data.
 
 ## M2 — Routing (root sessions)
 
+**Completed 2026-11-15:** pool sources/filters, envelope, triage, oMLX judge
+client with cache/fallback, scoring and policies, cache-aware pinning, apply +
+decision log, real-oMLX end-to-end routing (judge verdict used; model switched
+on the same turn).
+
 - **T2.1** Pool: favorites/list/available, catalog filter, glob include/exclude,
   variant resolution, local flag from provider `baseURL`, maxModels; tests with
   fixtures for favorites/available/list.
@@ -88,6 +93,11 @@ in `decisions.jsonl`, and a user `/model` forces a pin.
 
 ## M3 — Context optimiser
 
+**Completed 2026-11-15:** deterministic full/truncate/stub planner in Rust,
+protected parts, overflow path, optimiser plan application in the context hook,
+`lastContextTokens` recorded for the next routing decision; 50 Rust + 54 Bun
+tests at this point.
+
 - **T3.1** `optimise` core: token estimator, budget, dedupe, truncate, stub,
   protections, overflow; property tests (fits budget, idempotent, protected
   parts untouched, deterministic).
@@ -102,6 +112,10 @@ protected parts intact; under-budget turns are byte-identical; overflow logged.
 
 ## M4 — Subagents
 
+**Completed 2026-11-15:** role detection, agent policy (explore/general/review/
+plan defaults), explicit agent-model forced pins, parent-model tie-break,
+per-session escalation and attribution.
+
 - **T4.1** Role detection (`parentID`), agent metadata (`agentID`, `agentMode`,
   explicit `agentModel`), forced pin for explicit models.
 - **T4.2** Policy resolution order and defaults; quality floors; parent-model
@@ -113,6 +127,12 @@ fast/long-context model while the parent stays strong); `/router history`
 tags the child; `/router stats` breaks down by agent.
 
 ## M5 — Kilo shim
+
+**Completed 2026-11-15:** V1 `chat.message` routes through the SDK's generic
+transport to `POST /api/session/{id}/model`, decisions labelled
+`applied: "boundary"`, best-effort message transform for the optimiser, V1
+catalogue normalisation (toolcall/boolean capability maps, object cost, keyed
+variants), and tool-failure tracking.
 
 - **T5.1** V1 `server()` export with `chat.message`, `chat.params`,
   `experimental.chat.messages.transform`, `event`; host `kilo`.
@@ -126,6 +146,10 @@ correctly labelled decision, or reports unsupported without side effects.
 
 ## M6 — Surfaces
 
+**Completed 2026-11-15:** TUI `/router` command with status, on/off, interactive
+policy picker, pool, history, explain, pin/auto, judge probe, and subagent
+toggle; CLI status/config/history/doctor/pool.
+
 - **T6.1** TUI `/router` slash command and palette entry: status, on/off,
   policy picker, pool, history, explain, pin/auto, judge, subagents; direct
   config/state access; dialogs and toasts. No server command.
@@ -136,6 +160,11 @@ correctly labelled decision, or reports unsupported without side effects.
 Verification: every documented command exercised; output matches README.
 
 ## M7 — Docs, CI, release
+
+**Implemented 2026-11-15:** architecture/protocol/configuration/troubleshooting
+docs, README documentation index, GitHub Actions CI with wasm size gate, pack
+contents verified, packed-install smoke tests in OpenCode (same-turn switch) and
+Kilo (boundary switch). npm publish remains a manual release step.
 
 - **T7.1** README kept in sync; `docs/architecture.md`, `docs/protocol.md`,
   `docs/configuration.md`, `docs/development.md`, `docs/troubleshooting.md`.

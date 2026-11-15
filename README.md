@@ -5,11 +5,10 @@ Per-turn model routing for [OpenCode V2](https://opencode.ai) and
 [oMLX](https://github.com/jundot/omlx), with a context optimiser that keeps each
 turn inside the chosen model's budget.
 
-> **Status: early development (v0.1.0).** The design is complete, and the WASM
-> core, adapters, config/state, and CLI skeleton are in the repository. Routing,
-> the context optimiser, subagent policy, Kilo hooks, and release packaging are
-> landing per the implementation plan. Install commands do not work until the
-> first release. Design of record:
+> **Status: release candidate (v0.1.0).** Routing, the context optimiser,
+> subagent policy, the TUI `/router` surface, the CLI, and the Kilo shim are
+> implemented and tested. Release packaging (CI, npm) is the remaining step;
+> install commands do not work until the first publish. Design of record:
 > [`docs/specs/2026-11-15-opencode-omlx-router-design.md`](docs/specs/2026-11-15-opencode-omlx-router-design.md).
 
 ## Why
@@ -49,6 +48,16 @@ project and no Python runtime requirement.
 The only model call the plugin makes for a decision is a short JSON-verdict
 prompt to the oMLX endpoint you configure (localhost by default). If oMLX is
 slow or down, deterministic heuristics take over and routing continues.
+
+## Documentation
+
+- [Architecture](docs/architecture.md) — adapter, WASM core, turn flow, subagents, pinning, optimiser.
+- [WASM protocol](docs/protocol.md) — ABI, request/response JSON, need-judge flow, optimiser plans.
+- [Configuration reference](docs/configuration.md) — every key, defaults, examples.
+- [Troubleshooting](docs/troubleshooting.md) — symptoms, evidence, reset.
+- [Design spec](docs/specs/2026-11-15-opencode-omlx-router-design.md) and
+  [implementation plan](docs/plans/2026-11-15-implementation.md).
+- [Development notes](docs/development.md) — probe results, verification, limits.
 
 ## Requirements
 
@@ -391,7 +400,7 @@ Layout:
 ```text
 core/            Rust decision engine (no I/O), compiled to dist/core.wasm
 src/             plain-JS host adapters, judge client, state, commands
-src/tui.js       OpenCode TUI palette command (no JSX)
+src/tui.js       OpenCode TUI /router command + palette (plain JS)
 bin/             omlx-router CLI
 tests/           Bun tests and fixtures
 docs/            design spec and deeper docs

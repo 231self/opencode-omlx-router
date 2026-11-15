@@ -1,0 +1,44 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Install binaryen
+        run: sudo apt-get update && sudo apt-get install -y binaryen
+
+      - name: Rust format
+        run: cargo fmt --manifest-path core/Cargo.toml -- --check
+
+      - name: Rust clippy
+        run: cargo clippy --manifest-path core/Cargo.toml --all-targets -- -D warnings
+
+      - name: Rust tests
+        run: cargo test --manifest-path core/Cargo.toml
+
+      - name: Build wasm
+        run: bun run build:wasm
+
+      - name: Adapter tests
+        run: bun test
+
+      - name: Wasm size gate
+        run: |
+          size=$(wc -c < dist/core.wasm | tr -d ' ')
+          echo "dist/core.wasm: ${size} bytes"
+          test "$size" -le 614400

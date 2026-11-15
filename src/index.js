@@ -1,4 +1,5 @@
 import { readConfig } from "./config.js"
+import { Router, refOf } from "./router.js"
 import { loadCore } from "./wasm.js"
 
 /**
@@ -28,11 +29,22 @@ export default {
       }
     }
 
-    // M1 skeleton: hooks are registered so wiring is exercised; M2/M3 replace
-    // the bodies. Handlers never log prompt or message text.
-    await register("prompt", async () => {})
-    await register("context", async () => {})
-    await register("compaction", async () => {})
+    // Hooks are registered so wiring is exercised. The router owns all logic
+    // and never logs prompt or message text.
+    const router = new Router({
+      ctx,
+      host: "opencode",
+      core,
+      configOptions: ctx?.options ?? {},
+    })
+    await register("prompt", (event) => router.prompt(event))
+    await register("context", (event) => router.context(event))
+    await register("compaction", (event) => router.compaction(event))
+    try {
+      disposers.push(await ctx.tool.hook("execute.after", (event) => router.toolAfter(event)))
+    } catch (cause) {
+      coreError ??= `tool hook: ${cause?.message ?? cause}`
+    }
 
     if (config.debug) {
       console.log("[omlx-router] loaded", {
@@ -57,8 +69,167 @@ export default {
 
   async server(input) {
     const { config } = readConfig({ write: true })
-    if (config.debug) console.log("[omlx-router] kilo loaded", { directory: input?.directory ?? null })
-    // M5 wires the V1 hooks. Returning an empty hook map keeps Kilo untouched.
-    return {}
+    let core = null
+    try {
+      core = await loadCore()
+    } catch (cause) {
+      if (config.debug) console.error("[omlx-router] kilo core unavailable:", String(cause?.message ?? cause))
+      return {}
+    }
+    const api = input?.client?.session?._client
+    if (!api) return {}
+
+    const call = async (method, url, path, body) => {
+      const response = await api[method]({ url, ...(path ? { path } : {}), ...(body ? { body } : {}) })
+      if (response?.error) {
+        throw new Error(typeof response.error === "string" ? response.error : JSON.stringify(response.error))
+      }
+      return response?.data
+    }
+
+    const readProviders = async () => {
+      try {
+        if (!input?.client?.config?.providers) return []
+        const result = await input.client.config.providers()
+        const body = result?.data ?? result
+        return Array.isArray(body?.providers) ? body.providers : []
+      } catch (cause) {
+        if (config.debug) console.error("[omlx-router] kilo providers failed:", String(cause?.message ?? cause))
+        return []
+      }
+    }
+
+    const normalizeModel = (model, provider) => {
+      const capabilities = model?.capabilities ?? {}
+      const inputSet = capabilities.input
+      const outputSet = capabilities.output
+      const input = Array.isArray(inputSet)
+        ? inputSet
+        : Object.entries(inputSet ?? {})
+            .filter(([, enabled]) => enabled === true)
+            .map(([kind]) => kind)
+      const output = Array.isArray(outputSet)
+        ? outputSet
+        : Object.entries(outputSet ?? {})
+            .filter(([, enabled]) => enabled === true)
+            .map(([kind]) => kind)
+      const cost = Array.isArray(model?.cost) ? model.cost : model?.cost ? [model.cost] : []
+      const variants = Array.isArray(model?.variants)
+        ? model.variants
+        : Object.keys(model?.variants ?? {}).map((id) => ({ id }))
+      return {
+        ...model,
+        providerID: provider.id,
+        type: "chat",
+        api: model.api ?? provider.api,
+        capabilities: {
+          tools: Boolean(capabilities.tools ?? capabilities.toolcall),
+          input,
+          output,
+        },
+        cost,
+        variants,
+      }
+    }
+
+    const ctx = {
+      session: {
+        get: async ({ sessionID }) => {
+          const body = await call("get", "/api/session/{sessionID}", { sessionID })
+          return body?.data ?? body
+        },
+        switchModel: async ({ sessionID, model }) => {
+          await call("post", "/api/session/{sessionID}/model", { sessionID }, { model })
+        },
+      },
+      model: {
+        list: async () => {
+          const providers = await readProviders()
+          const models = []
+          for (const provider of providers) {
+            for (const model of Object.values(provider?.models ?? {})) {
+              if (!model || typeof model !== "object") continue
+              models.push(normalizeModel(model, provider))
+            }
+          }
+          if (models.length === 0) {
+            const body = await call("get", "/api/model")
+            const fallback = body?.data ?? []
+            if (config.debug) console.log("[omlx-router] kilo models fallback", fallback.length)
+            return fallback
+          }
+          if (config.debug) {
+            const sample = models
+              .filter((model) => String(model.providerID).includes("deepseek") || String(model.id).includes("deepseek"))
+              .map((model) => `${model.providerID}/${model.id}`)
+              .slice(0, 5)
+            console.log("[omlx-router] kilo models", models.length, sample)
+          }
+          return models
+        },
+      },
+      provider: {
+        list: async () => {
+          const providers = await readProviders()
+          return providers.map((provider) => ({
+            id: provider.id,
+            settings: { baseURL: provider?.api?.url },
+            api: provider.api,
+          }))
+        },
+      },
+      agent: {
+        get: async ({ agentID }) => {
+          const body = await call("get", "/api/agent")
+          return (body?.data ?? []).find((agent) => agent?.id === agentID)
+        },
+      },
+    }
+
+    const router = new Router({ ctx, host: "kilo", core, appliedMode: "boundary" })
+
+    const assistantModel = (messages) => {
+      for (let index = (messages?.length ?? 0) - 1; index >= 0; index -= 1) {
+        const info = messages[index]?.info
+        if (info?.role === "assistant" && info?.model?.providerID) return refOf(info.model)
+      }
+      return null
+    }
+
+    return {
+      "chat.message": async (event, output) => {
+        const sessionID = event?.sessionID
+        if (!sessionID || String(sessionID).startsWith("title-")) return
+        const text = (output?.parts ?? [])
+          .filter((part) => part?.type === "text")
+          .map((part) => part.text ?? "")
+          .join("\n")
+        await router.prompt({ sessionID, prompt: { text, files: [] } })
+      },
+
+      "experimental.chat.messages.transform": async (_hook, output) => {
+        try {
+          const reference = assistantModel(output?.messages)
+          if (!reference) return
+          const models = await ctx.model.list()
+          const found = models.find(
+            (model) => model.providerID === reference.providerID && (model.id ?? model.modelID) === reference.id,
+          )
+          if (found) router.contextMessages({ model: found, messages: output.messages })
+        } catch {
+          // Transform is best-effort in Kilo.
+        }
+      },
+
+      "tool.execute.after": async (hookInput, hookOutput) => {
+        if (!hookInput?.sessionID) return
+        const failed = Boolean(hookOutput?.error)
+        router.toolAfter({
+          sessionID: hookInput.sessionID,
+          tool: hookInput.tool,
+          status: failed ? "error" : "completed",
+        })
+      },
+    }
   },
 }

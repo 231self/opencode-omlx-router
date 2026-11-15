@@ -25,6 +25,7 @@
     "dist/core.wasm",
     "bin",
     "README.md",
+    "CHANGELOG.md",
     "LICENSE",
     "config.example.json"
   ],

@@ -89,3 +89,80 @@ Kilo use the `omlx-router` CLI. No server-side `/router` command is registered.
 - Plain-object export for the **TUI** part is not yet exercised. If
   `@opencode/plugin/tui` requires `Plugin.define`, import it there only; still no
   TypeScript. Resolved during M6.
+
+## M2 end-to-end verification (2026-11-15)
+
+- Pool: explicit `deepseek/deepseek-flash` and `deepseek/deepseek-v4-pro`.
+- Judge: the only model loaded in oMLX at the time, Qwen3.8-27B, `model: "auto"`.
+- A non-trivial planning prompt produced a judge verdict in **29.4 s** at
+  confidence 0.9 and routed to `deepseek-flash`; the assistant turn used that
+  model and the decision record was written with `applied: "same-turn"`.
+- The 27B works but is not a sensible per-turn judge. A ~4B MLX instruct model
+  is the supported configuration (README: Choose a judge).
+- A short "reply with E2E_OK" turn classified as trivial and skipped the judge
+  entirely (triage path), which is the intended fast path.
+
+## Known limits at this point
+
+- TUI `/router` is the only in-session surface; headless/Desktop use the CLI.
+- Kilo applies decisions at the next request boundary (probe-confirmed).
+- The Kilo message transform can only optimise when the message list carries an
+  assistant model; otherwise it is a no-op.
+
+## Repository workflow
+
+This is a jj repository colocated with git. Use jj for every mutation:
+
+```sh
+jj st
+jj describe -m "feat: …"
+jj new                      # start the next change
+jj bookmark set main -r @
+jj git push -b main
+```
+
+Never `git commit`/`git checkout`/`git reset`. Bookmark `main` is the release
+bookmark. Conventional commits.
+
+## Build and test
+
+```sh
+bun run build:wasm     # cargo build --release --target wasm32-unknown-unknown
+bun test               # adapter + WASM bridge (builds wasm first)
+bun run test:rust      # cargo test
+bun run check          # rustfmt, clippy -D warnings, both test suites, size gate
+```
+
+`dist/core.wasm` is committed for git installs and rebuilt by `prepack`. The
+gate is 600 KiB; the current artifact is ~370 KiB.
+
+## Adding a host
+
+1. Build a ctx shim exposing `session.get`, `session.switchModel`, `model.list`,
+   `provider.list`, and optionally `agent.get`.
+2. Construct `Router({ctx, host, core, appliedMode})`; use `"boundary"` when the
+   host cannot switch the in-flight turn.
+3. Wire the host's prompt hook to `router.prompt`, its context/pre-dispatch hook
+   to `router.context` (or `router.contextMessages` when no session id is
+   available), and failure signals to `router.toolAfter`.
+4. Add a host tag to the decision log and tests with a fake client.
+
+## Release checklist
+
+- `bun run check` green.
+- README install steps match the published package name.
+- `npm pack --dry-run` includes `dist/core.wasm`, `src`, `bin`, `README.md`,
+  `LICENSE`, `config.example.json`.
+- Pack-install smoke test in OpenCode (same-turn switch) and Kilo (boundary).
+- Update the spec/README if behaviour changed.
+- `jj bookmark set main -r @ && jj git push -b main`; publish to npm manually.
+
+## Kilo catalogue normalisation
+
+Kilo's V1 `config.providers()` returns a different model shape from OpenCode V2:
+capabilities use `toolcall` and boolean maps, `cost` is an object, and `variants`
+is a keyed map. The shim normalises those into the host-neutral shape before
+pool resolution (tools, input/output, cost array, variant array). Without this,
+`pool.requireTools` correctly filtered every Kilo model, producing `no_pool`.
+Verified with a packed install: pool of two, decision `applied: "boundary"`,
+chosen model `deepseek/deepseek-flash`.

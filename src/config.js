@@ -65,6 +65,14 @@ export function configPath(env = process.env) {
   return env.OMLX_ROUTER_CONFIG || path.join(os.homedir(), ".config", "omlx-router", "config.json")
 }
 
+/** Expand a `{env:NAME}` reference; an empty value means "no credential". */
+export function resolveSecret(value, env = process.env) {
+  if (typeof value !== "string") return undefined
+  const match = value.match(/^\{env:([A-Z0-9_]+)\}$/i)
+  if (match) return env[match[1]]
+  return value || undefined
+}
+
 function isPlainObject(value) {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value)
 }

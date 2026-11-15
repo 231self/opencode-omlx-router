@@ -1,4 +1,239 @@
+import { readConfig, saveConfig } from "./config.js"
+import { Judge } from "./judge.js"
+import { resolvePool } from "./pool.js"
+import {
+  clearPin,
+  clearPins,
+  readDecisions,
+  sessionHash,
+  writePin,
+} from "./state.js"
 import { buildStatus, formatStatus } from "./status.js"
+
+const HOST = "opencode"
+
+function currentSession(context) {
+  try {
+    const route = context.ui?.router?.current?.()
+    if (route?.type === "session" && route.sessionID) return route.sessionID
+  } catch {
+    // ignore
+  }
+  return undefined
+}
+
+function currentModel(context) {
+  try {
+    const model = context.ui?.model?.current?.()
+    if (!model?.providerID) return null
+    return {
+      providerID: model.providerID,
+      id: model.id ?? model.modelID,
+      variant: model.variant ?? "default",
+    }
+  } catch {
+    return null
+  }
+}
+
+function parseModel(text) {
+  const value = String(text ?? "").trim()
+  if (!value.includes("/")) return null
+  const [reference, variant] = value.split("#")
+  const [providerID, ...rest] = reference.split("/")
+  const id = rest.join("/")
+  if (!providerID || !id) return null
+  return { providerID, id, variant: variant ?? "default" }
+}
+
+function modelLabel(reference) {
+  if (!reference) return "none"
+  return `${reference.providerID}/${reference.id ?? reference.modelID}${reference.variant ? `#${reference.variant}` : ""}`
+}
+
+async function show(context, message, title = "oMLX Router") {
+  if (context.ui?.dialog?.alert) {
+    await context.ui.dialog.alert({ title, message })
+  } else {
+    await context.ui.toast.show({ title, message })
+  }
+}
+
+function poolLines(config, models, providers) {
+  const resolved = resolvePool({ models, providers, config, host: HOST })
+  const lines = [`source ${resolved.source} · ${resolved.pool.length} usable · ${resolved.candidates} available`]
+  for (const model of resolved.pool) {
+    lines.push(
+      [
+        `${model.providerID}/${model.modelID}${model.variant && model.variant !== "default" ? `#${model.variant}` : ""}`,
+        `ctx=${model.limit.context}`,
+        `local=${model.local ? "yes" : "no"}`,
+        `quality=${model.qualityOverride ?? "auto"}`,
+      ].join(" · "),
+    )
+  }
+  for (const warning of resolved.warnings) lines.push(`warning: ${warning}`)
+  return lines.join("\n")
+}
+
+async function runCommand(context, input) {
+  const [command = "status", ...rest] = String(input ?? "").trim().split(/\s+/)
+  const config = readConfig({ write: true }).config
+  const sessionID = currentSession(context)
+
+  switch (command) {
+    case "":
+    case "status": {
+      await show(context, formatStatus(buildStatus({ host: HOST })))
+      return
+    }
+    case "on":
+    case "off": {
+      saveConfig({ ...config, enabled: command === "on" })
+      await context.ui.toast.show({ title: "oMLX Router", message: `routing ${command}`, variant: "success" })
+      return
+    }
+    case "policy": {
+      if (rest[0]) {
+        if (!["cost", "quality", "latency"].includes(rest[0])) {
+          await show(context, "policy must be cost, quality, or latency")
+          return
+        }
+        saveConfig({ ...config, policy: rest[0] })
+        clearPins(HOST)
+        await context.ui.toast.show({ title: "oMLX Router", message: `policy ${rest[0]}`, variant: "success" })
+        return
+      }
+      const choice = await context.ui.dialog.select({
+        title: "oMLX Router policy",
+        current: config.policy,
+        options: [
+          { title: "Cost first", value: "cost", description: "Cheapest model that clears the bar; escalate when needed" },
+          { title: "Quality first", value: "quality", description: "Strongest capable model; cost is a tiebreak" },
+          { title: "Latency first", value: "latency", description: "Fastest capable model, favouring local and flash tiers" },
+        ],
+      })
+      if (!choice) return
+      saveConfig({ ...config, policy: choice })
+      clearPins(HOST)
+      await context.ui.toast.show({ title: "oMLX Router", message: `policy ${choice}`, variant: "success" })
+      return
+    }
+    case "pool": {
+      const location = context.location ?? context.data.location.default()
+      try {
+        await Promise.all([
+          context.data.location.model.sync(location),
+          context.data.location.provider.sync(location),
+        ])
+      } catch {
+        // best effort
+      }
+      const models = context.data.location.model.list(location) ?? []
+      const providers = context.data.location.provider.list(location) ?? []
+      await show(context, poolLines(config, models, providers))
+      return
+    }
+    case "history": {
+      const limit = Number(rest[0]) || 10
+      const decisions = readDecisions(HOST, limit)
+      if (decisions.length === 0) {
+        await show(context, "no decisions recorded yet")
+        return
+      }
+      const lines = decisions.map((record) => {
+        const when = new Date(record.ts ?? Date.now()).toLocaleTimeString()
+        const role = record.role === "subagent" ? `sub(${record.agent ?? "?"})` : "root"
+        return `${when} ${role} ${record.chosen ?? "?"} ${record.pinned ? "pinned" : "switched"} ${record.stage ?? ""}`
+      })
+      await show(context, lines.join("\n"))
+      return
+    }
+    case "explain": {
+      const hash = sessionID ? sessionHash(sessionID) : null
+      const decisions = readDecisions(HOST, 100).reverse()
+      const record = decisions.find((entry) => !hash || entry.session === hash)
+      await show(context, record ? JSON.stringify(record, null, 2) : "no decision for this session yet")
+      return
+    }
+    case "pin": {
+      if (!sessionID) {
+        await show(context, "no active session")
+        return
+      }
+      const reference = parseModel(rest.join(" ")) ?? currentModel(context)
+      if (!reference) {
+        await show(context, "pass provider/model or select a model first")
+        return
+      }
+      writePin(HOST, sessionID, {
+        model: reference,
+        forced: true,
+        source: "user",
+        since: Date.now(),
+        lastApplied: reference,
+        lastContextTokens: 0,
+      })
+      await context.ui.toast.show({ title: "oMLX Router", message: `pinned ${modelLabel(reference)}`, variant: "success" })
+      return
+    }
+    case "auto": {
+      if (!sessionID) {
+        await show(context, "no active session")
+        return
+      }
+      clearPin(HOST, sessionID)
+      await context.ui.toast.show({ title: "oMLX Router", message: "routing resumed", variant: "success" })
+      return
+    }
+    case "judge": {
+      const judge = new Judge({ config: config.judge })
+      try {
+        const probe = await judge.probe()
+        const lines = [
+          `models   ${probe.models.join(", ")}`,
+          `selected ${probe.selected}`,
+          `latency  ${probe.ms} ms`,
+          `sample   ${probe.sample ? JSON.stringify(probe.sample) : "unparsable"}`,
+        ]
+        await show(context, lines.join("\n"))
+      } catch (error) {
+        await show(context, `judge unavailable: ${error?.message ?? error}`)
+      }
+      return
+    }
+    case "subagents": {
+      const enabled = rest[0] !== "off"
+      saveConfig({ ...config, subagents: { ...config.subagents, enabled } })
+      await context.ui.toast.show({
+        title: "oMLX Router",
+        message: `subagent routing ${enabled ? "on" : "off"}`,
+        variant: "success",
+      })
+      return
+    }
+    case "help": {
+      await show(
+        context,
+        [
+          "/router — status",
+          "/router on | off",
+          "/router policy [cost|quality|latency]",
+          "/router pool",
+          "/router history [n]",
+          "/router explain",
+          "/router pin [provider/model]",
+          "/router auto",
+          "/router judge",
+          "/router subagents on|off",
+        ].join("\n"),
+      )
+      return
+    }
+    default:
+      await show(context, `unknown command: ${command}. Try /router help`)
+  }
+}
 
 /**
  * OpenCode TUI part. Plain object export, no JSX, no TypeScript.
@@ -10,16 +245,6 @@ export default {
   id: "omlx.router.tui",
 
   setup(context) {
-    const showStatus = async () => {
-      const status = buildStatus({ host: "opencode" })
-      const message = formatStatus(status)
-      if (context.ui?.dialog?.alert) {
-        await context.ui.dialog.alert({ title: "oMLX Router", message })
-      } else {
-        await context.ui.toast.show({ title: "oMLX Router", message })
-      }
-    }
-
     context.keymap.layer(() => ({
       mode: "global",
       priority: 10,
@@ -30,7 +255,13 @@ export default {
           group: "oMLX Router",
           palette: true,
           slash: { name: "router", arguments: true },
-          run: showStatus,
+          run: async (input) => {
+            try {
+              await runCommand(context, input)
+            } catch (error) {
+              await show(context, `router error: ${error?.message ?? error}`)
+            }
+          },
         },
       ],
       bindings: ["omlx.router.settings"],

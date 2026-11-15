@@ -72,6 +72,28 @@ export function clearPin(host, sessionID, env = process.env) {
   }
 }
 
+/** Remove every pin for a host (used when the policy changes). */
+export function clearPins(host, env = process.env) {
+  let entries
+  try {
+    entries = fs.readdirSync(pinsDir(host, env))
+  } catch (error) {
+    if (error.code === "ENOENT") return 0
+    throw error
+  }
+  let removed = 0
+  for (const entry of entries) {
+    if (!entry.endsWith(".json")) continue
+    try {
+      fs.rmSync(path.join(pinsDir(host, env), entry))
+      removed += 1
+    } catch {
+      // best effort
+    }
+  }
+  return removed
+}
+
 export function listPins(host, env = process.env) {
   let entries
   try {

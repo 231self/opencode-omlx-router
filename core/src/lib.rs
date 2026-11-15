@@ -20,6 +20,15 @@ use std::sync::Mutex;
 
 use serde_json::{json, Value};
 
+mod envelope;
+mod judge;
+mod optimise;
+mod pin;
+mod route;
+mod score;
+mod triage;
+mod types;
+
 pub const ABI_VERSION: u32 = 1;
 
 /// The last JSON result. The returned pointer stays valid until the next call.
@@ -140,12 +149,15 @@ fn handle_route(request: Value) -> Value {
         });
     }
 
-    // M1 skeleton: routing lands in M2.
-    json!({
-        "abi": ABI_VERSION,
-        "action": "skip",
-        "reason": "not_implemented",
-    })
+    match serde_json::from_value::<types::RouteRequest>(request) {
+        Ok(parsed) => route::handle(parsed),
+        Err(error) => json!({
+            "abi": ABI_VERSION,
+            "action": "skip",
+            "reason": "invalid_input",
+            "error": error.to_string(),
+        }),
+    }
 }
 
 fn handle_optimise(request: Value) -> Value {
@@ -163,17 +175,21 @@ fn handle_optimise(request: Value) -> Value {
         });
     }
 
-    // M3: deterministic pruning plan. Under budget is a no-op.
-    json!({
-        "abi": ABI_VERSION,
-        "plan": [],
-        "stats": {
-            "beforeTokens": 0,
-            "afterTokens": 0,
-            "partsPruned": 0,
-            "overflow": false,
-        },
-    })
+    match serde_json::from_value::<types::OptimiseRequest>(request) {
+        Ok(parsed) => optimise::handle(parsed),
+        Err(error) => json!({
+            "abi": ABI_VERSION,
+            "plan": [],
+            "stats": {
+                "beforeTokens": 0,
+                "afterTokens": 0,
+                "partsPruned": 0,
+                "overflow": false,
+            },
+            "reason": "invalid_input",
+            "error": error.to_string(),
+        }),
+    }
 }
 
 #[cfg(test)]
@@ -257,16 +273,43 @@ mod tests {
     }
 
     #[test]
-    fn valid_request_is_stubbed() {
+    fn valid_request_without_pool_skips() {
         let value = call_route(r#"{"abi":1,"kind":"primary"}"#);
         assert_eq!(value["abi"], 1);
         assert_eq!(value["action"], "skip");
-        assert_eq!(value["reason"], "not_implemented");
+        assert_eq!(value["reason"], "no_pool");
+    }
+
+    #[test]
+    fn minimal_request_decides() {
+        let input = r#"{
+          "abi": 1,
+          "nowMs": 1000,
+          "kind": "primary",
+          "role": "root",
+          "turn": {"promptText": "implement the parser", "lastContextTokens": 2000},
+          "pool": [{
+            "providerID": "acme",
+            "modelID": "m8",
+            "name": "Acme 8B",
+            "cost": [{"input": 1.0, "output": 2.0, "cache": {"read": 0.1, "write": 0.1}}],
+            "limit": {"context": 100000, "output": 8192},
+            "capabilities": {"tools": true, "input": ["text"], "output": ["text"]},
+            "status": "active"
+          }],
+          "judge": {"unavailable": true}
+        }"#;
+        let value = call_route(input);
+        assert_eq!(value["action"], "decide");
+        assert_eq!(value["decision"]["providerID"], "acme");
+        assert_eq!(value["decision"]["id"], "m8");
     }
 
     #[test]
     fn optimise_is_empty_plan() {
-        let value = call_optimise(r#"{"abi":1,"messages":[]}"#);
+        let value = call_optimise(
+            r#"{"abi":1,"messages":[],"model":{"limit":{"context":100000,"output":8192}}}"#,
+        );
         assert_eq!(value["abi"], 1);
         assert_eq!(value["plan"].as_array().map(Vec::len), Some(0));
         assert_eq!(value["stats"]["overflow"], false);
