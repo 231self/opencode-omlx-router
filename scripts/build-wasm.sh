@@ -12,7 +12,12 @@ mkdir -p dist
 cp target/wasm32-unknown-unknown/release/omlx_router_core.wasm dist/core.wasm
 
 if command -v wasm-opt >/dev/null 2>&1; then
-  wasm-opt -Oz dist/core.wasm -o dist/core.wasm
+  wasm-opt -Oz \
+    --enable-bulk-memory \
+    --enable-mutable-globals \
+    --enable-sign-ext \
+    --enable-nontrapping-float-to-int \
+    dist/core.wasm -o dist/core.wasm
 fi
 
 size=$(wc -c < dist/core.wasm | tr -d ' ')

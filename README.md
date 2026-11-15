@@ -55,6 +55,7 @@ slow or down, deterministic heuristics take over and routing continues.
 - [WASM protocol](docs/protocol.md) — ABI, request/response JSON, need-judge flow, optimiser plans.
 - [Configuration reference](docs/configuration.md) — every key, defaults, examples.
 - [Troubleshooting](docs/troubleshooting.md) — symptoms, evidence, reset.
+- [Building and releasing](docs/releasing.md) — build, pack, publish, tag, consumer install.
 - [Design spec](docs/specs/2026-11-15-opencode-omlx-router-design.md) and
   [implementation plan](docs/plans/2026-11-15-implementation.md).
 - [Development notes](docs/development.md) — probe results, verification, limits.
@@ -74,17 +75,15 @@ requires Rust with the `wasm32-unknown-unknown` target.
 
 ## Install
 
-Once published:
+> The package is not on npm yet. Build from a checkout today; the npm commands
+> work after the first publish. Release/build details:
+> [docs/releasing.md](docs/releasing.md).
+
+### OpenCode V2
 
 ```sh
-# OpenCode (global config)
 opencode plugin add opencode-omlx-router
-
-# Kilo (global config)
-kilo plugin opencode-omlx-router
 ```
-
-Or add it explicitly:
 
 ```jsonc
 // ~/.config/opencode/opencode.jsonc
@@ -94,14 +93,43 @@ Or add it explicitly:
 }
 ```
 
-From this repository (development):
+### Kilo
+
+```sh
+kilo plugin opencode-omlx-router
+```
+
+```jsonc
+// ~/.config/kilo/kilo.jsonc or project kilo.jsonc
+{
+  "$schema": "https://app.kilo.ai/config.json",
+  "plugin": ["opencode-omlx-router"]
+}
+```
+
+### From a checkout (works before npm publish)
 
 ```sh
 git clone https://github.com/231self/opencode-omlx-router
 cd opencode-omlx-router
-bun run build:wasm
-# then point the host at the directory, e.g. "plugins": ["/path/to/opencode-omlx-router"]
+bun install
+bun run build:wasm       # needs Rust with wasm32-unknown-unknown
 ```
+
+Then point the host at the checkout:
+
+```jsonc
+// OpenCode
+{ "plugins": ["/absolute/path/to/opencode-omlx-router"] }
+```
+
+```jsonc
+// Kilo
+{ "plugin": ["/absolute/path/to/opencode-omlx-router/src/index.js"] }
+```
+
+Kilo applies a decision at the next request boundary; see
+[Kilo limitations](#kilo-limitations).
 
 ## Choose a judge
 

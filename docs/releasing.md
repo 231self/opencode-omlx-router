@@ -1,0 +1,157 @@
+# Building and releasing
+
+## Requirements
+
+| Tool | Version | Why |
+|---|---|---|
+| Bun | ≥ 1.4 | Tests and scripts |
+| Rust | stable, 1.98 tested | Core |
+| `wasm32-unknown-unknown` target | — | Core build |
+| binaryen (`wasm-opt`) | optional | Size optimisation; CI installs it |
+| npm account | — | Publish (name availability checked) |
+| `gh` | authenticated | Release/tag |
+
+```sh
+rustup target add wasm32-unknown-unknown
+```
+
+## Build
+
+```sh
+bun install                 # no runtime dependencies; creates the lockfile
+bun run build:wasm          # cargo build --release --target wasm32-unknown-unknown
+bun test                    # adapter + wasm bridge (rebuilds wasm first)
+bun run test:rust           # cargo test
+bun run check               # fmt, clippy -D warnings, both suites, size gate
+```
+
+Artifacts:
+
+- `dist/core.wasm` — the only compiled file, committed for git installs and
+  included in npm packs by `prepack`.
+- `src/` — plain ESM host adapters, no build step.
+- `bin/omlx-router.mjs` — CLI.
+
+`npm pack --dry-run` must list `dist/core.wasm`, `src/`, `bin/`, `README.md`,
+`CHANGELOG.md`, `LICENSE`, and `config.example.json`.
+
+## Version and changelog
+
+1. Bump `version` in `package.json` (and `Cargo.toml` for the core).
+2. Move the `CHANGELOG.md` section from `unreleased` to the release version.
+3. Update README install/usage if behaviour changed.
+4. `bun run check`.
+5. `jj describe -m "release: v0.1.0"`, `jj new`.
+
+## Publish to npm
+
+The package name `opencode-omlx-router` is available (checked 2026-11-15).
+
+```sh
+npm login                       # or set NPM_TOKEN for CI publishing
+npm whoami
+npm publish --access public     # runs prepack -> build:wasm
+npm view opencode-omlx-router version
+```
+
+2FA: use an automation token or answer the OTP prompt interactively. Never
+commit a token.
+
+## Tag and GitHub release
+
+```sh
+jj bookmark set main -r @-
+jj git push -b main
+jj tag set v0.1.0 -r main
+jj git push --tag v0.1.0
+gh release create v0.1.0 --title v0.1.0 --notes-file CHANGELOG.md
+```
+
+CI (`.github/workflows/ci.yml`) must be green first: rustfmt, clippy, Rust
+tests, wasm build with `wasm-opt` feature flags, Bun tests, and the 600 KiB size
+gate.
+
+## Verify the published artifact
+
+```sh
+mkdir -p /tmp/omlx-verify && cd /tmp/omlx-verify
+npm pack opencode-omlx-router
+tar -tzf opencode-omlx-router-0.1.0.tgz | head
+```
+
+Then install it as a consumer (below) in a scratch project and confirm a
+decision is logged in `~/.local/state/omlx-router/opencode/decisions.jsonl`.
+
+## Consumer install (after publish)
+
+### OpenCode V2
+
+```sh
+opencode plugin add opencode-omlx-router
+```
+
+or in `~/.config/opencode/opencode.jsonc`:
+
+```jsonc
+{
+  "$schema": "https://opencode.ai/config.json",
+  "plugins": ["opencode-omlx-router"]
+}
+```
+
+Then in the TUI: `/router` for status, `/router judge` to test the judge,
+`/router policy` to choose a policy.
+
+### Kilo
+
+```sh
+kilo plugin opencode-omlx-router
+```
+
+or in `~/.config/kilo/kilo.jsonc` / project `kilo.jsonc`:
+
+```jsonc
+{
+  "$schema": "https://app.kilo.ai/config.json",
+  "plugin": ["opencode-omlx-router"]
+}
+```
+
+Kilo applies a decision at the next request boundary; use `omlx-router status`
+and `omlx-router history` for visibility.
+
+### From a git checkout (works before npm publish)
+
+```sh
+git clone https://github.com/231self/opencode-omlx-router
+cd opencode-omlx-router
+bun install
+bun run build:wasm
+```
+
+OpenCode config:
+
+```jsonc
+{ "plugins": ["/absolute/path/to/opencode-omlx-router"] }
+```
+
+Kilo config:
+
+```jsonc
+{ "plugin": ["/absolute/path/to/opencode-omlx-router/src/index.js"] }
+```
+
+## Post-release
+
+- `gh repo edit 231self/opencode-omlx-router --add-topic ...`
+- Watch `gh run list` and `npm view opencode-omlx-router`.
+- If a bad release ships within 72 h: `npm unpublish opencode-omlx-router@x.y.z`
+  (avoid if possible; prefer `npm deprecate` and a patch).
+- Never reuse a published version.
+
+## Rollback/disable for users
+
+- Disable the plugin: `opencode plugin remove opencode-omlx-router` or set
+  `"enabled": false` in `~/.config/omlx-router/config.json`.
+- The plugin never modifies host files; removing it leaves only config/state
+  under `~/.config/omlx-router` and `~/.local/state/omlx-router`.
