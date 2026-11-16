@@ -1,4 +1,4 @@
-import { readConfig, saveConfig } from "./config.js"
+import { configPath, readConfig, saveConfig } from "./config.js"
 import { Judge } from "./judge.js"
 import {
   Provisioner,
@@ -81,6 +81,10 @@ function poolLines(config, models, providers) {
     )
   }
   for (const warning of resolved.warnings) lines.push(`warning: ${warning}`)
+  lines.push("")
+  lines.push(`config ${configPath()}`)
+  lines.push("set models: omlx-router config set pool.source list")
+  lines.push(`            omlx-router config set pool.models '["provider/model", "..."]'`)
   return lines.join("\n")
 }
 
@@ -421,15 +425,51 @@ async function runCommand(context, input) {
  * `ctx.session.synthetic` starts a model turn (see docs/development.md).
  */
 export default {
-  id: "omlx.router.tui",
+  id: "omlx-router.tui",
 
   setup(context) {
+    const disposers = []
+
+    if (typeof context.data?.on === "function") {
+      const refresh = async (event) => {
+        const sessionID = event?.data?.sessionID ?? event?.sessionID
+        if (!sessionID) return
+        try {
+          context.data.session?.invalidate?.(sessionID)
+          await context.data.session?.sync?.(sessionID)
+        } catch {
+          // The host refreshes on its next event; routing must not be affected.
+        }
+      }
+
+      disposers.push(
+        context.data.on("session.model.selected", (event) => {
+          const model = event?.data?.model
+          const previous = event?.data?.previous
+          const changed =
+            model &&
+            (!previous ||
+              previous.providerID !== model.providerID ||
+              previous.id !== model.id)
+          if (changed) {
+            void context.ui.toast.show({
+              title: "oMLX Router",
+              message: `model → ${model.providerID}/${model.id}`,
+              duration: 3000,
+            })
+          }
+          void refresh(event)
+        }),
+      )
+      disposers.push(context.data.on("session.execution.succeeded", (event) => void refresh(event)))
+    }
+
     context.keymap.layer(() => ({
       mode: "global",
       priority: 10,
       commands: [
         {
-          id: "omlx.router.settings",
+          id: "omlx-router.settings",
           title: "oMLX Router: settings",
           group: "oMLX Router",
           palette: true,
@@ -443,7 +483,17 @@ export default {
           },
         },
       ],
-      bindings: ["omlx.router.settings"],
+      bindings: ["omlx-router.settings"],
     }))
+
+    return () => {
+      for (const dispose of disposers) {
+        try {
+          dispose?.()
+        } catch {
+          // Cleanup must not mask unload.
+        }
+      }
+    }
   },
 }

@@ -9,7 +9,7 @@ import { loadCore } from "./wasm.js"
  * - Kilo calls `server(input)` (V1 plugin API).
  */
 export default {
-  id: "omlx.router",
+  id: "omlx-router",
 
   async setup(ctx) {
     const { config, path, seeded, error } = readConfig({ seed: ctx?.options ?? {}, write: true })

@@ -7,7 +7,7 @@ turn inside the chosen model's budget.
 
 > **npm package:** [`@231self/opencode-omlx-router`](https://www.npmjs.com/package/@231self/opencode-omlx-router)
 >
-> **Status: v0.1.0.** Routing, the context optimiser, subagent policy, the TUI
+> **Status: v0.1.1.** Routing, the context optimiser, subagent policy, the TUI
 > `/router` surface, per-turn timing, the CLI, and the Kilo shim are implemented
 > and tested. Design of record:
 > [`docs/specs/2026-11-15-opencode-omlx-router-design.md`](docs/specs/2026-11-15-opencode-omlx-router-design.md).
@@ -130,6 +130,46 @@ Then point the host at the checkout:
 
 Kilo applies a decision at the next request boundary; see
 [Kilo limitations](#kilo-limitations).
+
+## Choose the pool
+
+The **pool** is the set of models the router may choose from. By default it uses
+your host favorites. You can instead name the models explicitly:
+
+```sh
+omlx-router config set pool.source list
+omlx-router config set pool.models '["deepseek/deepseek-flash","deepseek/deepseek-v4-pro"]'
+omlx-router config set pool.minContext 32000
+```
+
+Or edit `~/.config/omlx-router/config.json`:
+
+```jsonc
+{
+  "pool": {
+    "source": "list",
+    "models": [
+      "deepseek/deepseek-flash",
+      "deepseek/deepseek-v4-pro"
+    ],
+    "requireTools": true,
+    "minContext": 32000
+  }
+}
+```
+
+`source` can be:
+
+| Value | Meaning |
+|---|---|
+| `favorites` | Models favorited in OpenCode/Kilo (default; falls back to all available) |
+| `list` | Exactly `pool.models` (use `provider/model#variant` for a variant) |
+| `available` | Every eligible chat model the host advertises |
+
+`pool.include` / `pool.exclude` add or drop globs after the source; `maxModels`
+caps the judge's candidate table; `requireTools` and `minContext` are hard
+filters. `/router pool` (or `omlx-router pool`) shows the resolved pool, the
+config path, and the exact commands to change it.
 
 ## Choose a judge
 

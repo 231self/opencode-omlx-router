@@ -17,6 +17,8 @@ function environment() {
 function fakeContext() {
   let layer
   const messages = []
+  const handlers = {}
+  const synced = []
   let confirmAnswer = true
   const context = {
     location: { directory: "/tmp" },
@@ -31,6 +33,18 @@ function fakeContext() {
       toast: { show: async ({ title, message }) => messages.push({ kind: "toast", title, message }) },
     },
     data: {
+      on: (type, handler) => {
+        handlers[type] = handler
+        return () => {
+          delete handlers[type]
+        }
+      },
+      session: {
+        sync: async (sessionID) => {
+          synced.push(sessionID)
+        },
+        invalidate: () => {},
+      },
       location: {
         default: () => ({ directory: "/tmp" }),
         model: {
@@ -53,6 +67,8 @@ function fakeContext() {
     context,
     messages,
     command: () => layer.commands[0],
+    handlers,
+    synced,
     setConfirm: (value) => {
       confirmAnswer = value
     },
@@ -63,7 +79,7 @@ test("tui exposes the router slash command", () => {
   environment()
   const { context, command } = fakeContext()
   tui.setup(context)
-  expect(tui.id).toBe("omlx.router.tui")
+  expect(tui.id).toBe("omlx-router.tui")
   expect(command().slash).toEqual({ name: "router", arguments: true })
 })
 
@@ -191,4 +207,21 @@ test("/router timing reports local judge vs remote model time", async () => {
   expect(text).toContain("local judge 800ms")
   expect(text).toContain("remote model 7.0s")
   expect(text).toContain("turn 10.0s")
+})
+
+test("tui refreshes the model and shows a switch toast", async () => {
+  environment()
+  const { context, messages, handlers, synced } = fakeContext()
+  tui.setup(context)
+  handlers["session.model.selected"]({
+    data: {
+      sessionID: "ses_1",
+      model: { providerID: "deepseek", id: "deepseek-v4-pro" },
+      previous: { providerID: "deepseek", id: "deepseek-flash" },
+    },
+  })
+  await Promise.resolve()
+  await Promise.resolve()
+  expect(synced).toContain("ses_1")
+  expect(messages.some((entry) => String(entry.message).includes("deepseek-v4-pro"))).toBe(true)
 })

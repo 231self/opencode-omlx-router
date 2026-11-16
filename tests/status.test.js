@@ -46,7 +46,7 @@ test("status reflects pins and the latest decision", () => {
 test("formatStatus always shows the essentials", () => {
   const { env } = tempEnv()
   const text = formatStatus(buildStatus({ host: "opencode", env, core: { abi: 1 } }))
-  expect(text).toContain("opencode-omlx-router 0.1.0")
+  expect(text).toContain("opencode-omlx-router 0.1.1")
   expect(text).toContain("policy cost")
   expect(text).toContain("core       ABI 1")
   expect(text).toContain("last       none")

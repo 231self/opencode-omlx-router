@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.1.1 — 2026-11-16
+
+### Added
+
+- A **Choose the pool** quickstart with explicit `pool.source: "list"` and
+  `pool.models` examples; `/router pool` and `omlx-router pool` now print the
+  config path and the exact commands to change the pool.
+
+### Changed
+
+- Clearer plugin IDs: `omlx-router` (server) and `omlx-router.tui` (TUI),
+  replacing `omlx.router` / `omlx.router.tui`.
+- The TUI part listens for `session.model.selected`, refreshes the session, and
+  shows a short model-switch toast, so a routed model is visible even when the
+  host footer lags.
+
 ## 0.1.0 — 2026-11-16
 
 First release.

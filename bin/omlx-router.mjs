@@ -169,6 +169,9 @@ function poolCommand() {
   if (config.pool.models.length) console.log(`models   ${config.pool.models.join(", ")}`)
   if (config.pool.include.length) console.log(`include  ${config.pool.include.join(", ")}`)
   if (config.pool.exclude.length) console.log(`exclude  ${config.pool.exclude.join(", ")}`)
+  console.log(`config   ${configPath()}`)
+  console.log("set models: omlx-router config set pool.source list")
+  console.log(`            omlx-router config set pool.models '["provider/model", "..."]'`)
   console.log("note     the live pool is resolved by the host adapter and shown with /router pool")
 }
 

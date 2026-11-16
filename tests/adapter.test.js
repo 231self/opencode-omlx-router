@@ -48,7 +48,7 @@ test("setup seeds config from plugin options", async () => {
 
 test("plugin id is stable and the V1 server returns a hook map", async () => {
   tempEnv()
-  expect(plugin.id).toBe("omlx.router")
+  expect(plugin.id).toBe("omlx-router")
   const hooks = await plugin.server({ directory: "/tmp" })
   expect(hooks).toEqual({})
 })
