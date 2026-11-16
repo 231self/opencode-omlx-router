@@ -435,10 +435,11 @@ the CLI for headless `opencode run`/`serve`, OpenCode Desktop, and Kilo.
 
 | Command | Purpose |
 |---|---|
-| `/router` | Status dialog: state, policy, pool, pins, last decision, judge health |
+| `/router` | Navigable action menu: status, policy, pool, timing, history, judge, pin, toggles |
+| `/router status` | Compact status: state, judge, pins, timing, last decision |
 | `/router on` / `/router off` | Enable or disable routing |
 | `/router policy` | Interactive picker for `cost` / `quality` / `latency`; clears pins |
-| `/router pool` | Resolved models with inferred quality/cost/local flags and exclusion reasons |
+| `/router pool` | Resolved models, config path, and the exact commands to change the pool |
 | `/router history [n]` | Recent decisions, including subagents and judge/route time |
 | `/router timing [n]` | Local judge vs remote model vs tool time per turn |
 | `/router explain` | Full trace of this session's last decision |
@@ -446,8 +447,11 @@ the CLI for headless `opencode run`/`serve`, OpenCode Desktop, and Kilo.
 | `/router judge` | Probe oMLX directly: model, latency, sample verdict |
 | `/router subagents on\|off` | Toggle subagent routing |
 
-A palette entry, **"oMLX Router: settings"**, opens the same dialog without
-typing a command.
+Menu items have descriptions and are navigable with the arrow keys, Enter, and
+Esc. A palette entry, **"oMLX Router: settings"**, opens the same menu without
+typing a command. When routing changes the model, the plugin refreshes the
+session and shows a short `model → …` toast; the host footer follows the
+session model.
 
 ### CLI
 

@@ -4,7 +4,7 @@ import os from "node:os"
 import path from "node:path"
 
 import { appendDecision, appendTurn, writePin } from "../src/state.js"
-import { buildStatus, formatStatus, formatTiming } from "../src/status.js"
+import { buildStatus, formatStatus, formatTiming, formatTuiStatus } from "../src/status.js"
 
 function tempEnv() {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "omlx-router-status-"))
@@ -77,4 +77,29 @@ test("status and formatting expose judge vs remote timing", () => {
   expect(line).toContain("remote model 7.0s")
   expect(line).toContain("(last 1)")
   expect(formatStatus(status)).toContain("timing     local judge")
+})
+
+test("compact TUI status stays short and readable", () => {
+  const { env } = tempEnv()
+  appendTurn(
+    "opencode",
+    {
+      ts: Date.now(),
+      role: "root",
+      turnMs: 10_000,
+      routeMs: 1_000,
+      judgeMs: 800,
+      modelMs: 7_000,
+      toolMs: 2_000,
+    },
+    env,
+  )
+  const text = formatTuiStatus(buildStatus({ host: "opencode", env }))
+  const lines = text.split("\n")
+  expect(lines.length).toBeLessThanOrEqual(8)
+  expect(lines.every((line) => line.length < 100)).toBe(true)
+  expect(text).toContain("state   enabled")
+  expect(text).toContain("judge   auto")
+  expect(text).toContain("timing  judge 800ms")
+  expect(text).toContain("config  /")
 })

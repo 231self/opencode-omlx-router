@@ -20,6 +20,8 @@ function fakeContext() {
   const handlers = {}
   const synced = []
   let confirmAnswer = true
+  let selectAnswers = []
+  let lastOptions = []
   const context = {
     location: { directory: "/tmp" },
     ui: {
@@ -27,7 +29,10 @@ function fakeContext() {
       model: { current: () => ({ providerID: "deepseek", id: "deepseek-flash", variant: "default" }) },
       dialog: {
         alert: async ({ title, message }) => messages.push({ kind: "alert", title, message }),
-        select: async () => "quality",
+        select: async ({ options }) => {
+          lastOptions = options ?? []
+          return selectAnswers.length ? selectAnswers.shift() : "quality"
+        },
         confirm: async () => confirmAnswer,
       },
       toast: { show: async ({ title, message }) => messages.push({ kind: "toast", title, message }) },
@@ -69,6 +74,10 @@ function fakeContext() {
     command: () => layer.commands[0],
     handlers,
     synced,
+    options: () => lastOptions,
+    setSelect: (...answers) => {
+      selectAnswers = answers
+    },
     setConfirm: (value) => {
       confirmAnswer = value
     },
@@ -102,7 +111,7 @@ test("/router status renders a dialog", async () => {
   tui.setup(context)
   await command().run("status")
   const alert = messages.find((entry) => entry.kind === "alert")
-  expect(alert.message).toContain("opencode-omlx-router")
+  expect(alert.message).toContain("oMLX Router")
   expect(alert.message).toContain("policy")
 })
 
@@ -224,4 +233,17 @@ test("tui refreshes the model and shows a switch toast", async () => {
   await Promise.resolve()
   expect(synced).toContain("ses_1")
   expect(messages.some((entry) => String(entry.message).includes("deepseek-v4-pro"))).toBe(true)
+})
+
+test("/router opens a navigable menu with descriptions", async () => {
+  environment()
+  const { context, messages, command, options, setSelect } = fakeContext()
+  tui.setup(context)
+  setSelect("status", "close")
+  await command().run("")
+  const menu = options()
+  expect(menu.length).toBeGreaterThan(5)
+  expect(menu.every((option) => option.description)).toBe(true)
+  expect(menu.some((option) => option.title === "Status")).toBe(true)
+  expect(messages.some((entry) => String(entry.message).includes("oMLX Router"))).toBe(true)
 })

@@ -1,3 +1,5 @@
+import os from "node:os"
+
 import { readConfig } from "./config.js"
 import {
   hostStateDir,
@@ -63,6 +65,44 @@ export function formatMilliseconds(value) {
   const milliseconds = Number(value) || 0
   if (milliseconds >= 1000) return `${(milliseconds / 1000).toFixed(1)}s`
   return `${Math.round(milliseconds)}ms`
+}
+
+function shortPath(value) {
+  const text = String(value ?? "")
+  const home = os.homedir()
+  return home && text.startsWith(home) ? `~${text.slice(home.length)}` : text
+}
+
+function shortHost(value) {
+  try {
+    return new URL(String(value)).host
+  } catch {
+    return String(value ?? "")
+  }
+}
+
+/** Compact status for the TUI dialog; the CLI keeps the wider format. */
+export function formatTuiStatus(status) {
+  const lines = [
+    `oMLX Router ${status.version} · ${status.host}`,
+    `state   ${status.enabled ? "enabled" : "disabled"} · policy ${status.policy} · pool ${status.pool}`,
+    `judge   ${status.judge.enabled ? status.judge.model : "disabled"} · ${shortHost(status.judge.baseURL)}`,
+    `pins    ${status.pins}${status.pinModels.length ? ` · ${status.pinModels.map(modelLabel).join(", ")}` : ""}`,
+  ]
+  if (status.timing?.count) {
+    const average = status.timing.averages
+    lines.push(
+      `timing  judge ${formatMilliseconds(average.judgeMs)} · remote ${formatMilliseconds(average.modelMs)} · turn ${formatMilliseconds(average.turnMs)}`,
+    )
+  }
+  if (status.last) {
+    lines.push(
+      `last    ${status.last.chosen ?? "unknown"} · ${status.last.stage ?? ""}${status.last.pinned ? " · pinned" : ""}`,
+    )
+  }
+  lines.push(`config  ${shortPath(status.configPath)}`)
+  if (status.error) lines.push(`warning ${status.error}`)
+  return lines.join("\n")
 }
 
 export function formatTiming(summary) {

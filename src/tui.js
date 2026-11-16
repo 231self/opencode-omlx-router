@@ -16,7 +16,7 @@ import {
   summariseTurns,
   writePin,
 } from "./state.js"
-import { buildStatus, formatMilliseconds, formatStatus, formatTiming } from "./status.js"
+import { buildStatus, formatMilliseconds, formatStatus, formatTiming, formatTuiStatus } from "./status.js"
 
 const HOST = "opencode"
 
@@ -207,15 +207,62 @@ async function cancelJudgeTask(context, config, taskID) {
   }
 }
 
+async function openMenu(context) {
+  if (!context.ui?.dialog?.select) {
+    await show(context, formatTuiStatus(buildStatus({ host: HOST })))
+    return
+  }
+  for (;;) {
+    const config = readConfig({ write: true }).config
+    const choice = await context.ui.dialog.select({
+      title: "oMLX Router  ·  arrows move  ·  enter select",
+      options: [
+        { title: "Status", value: "status", description: "State, judge, pool, pins, and the last decision" },
+        { title: "Policy", value: "policy", description: "Cost / quality / latency; clears pins when changed" },
+        { title: "Pool", value: "pool", description: "Models available to the router and how to edit them" },
+        { title: "Timing", value: "timing", description: "Local judge vs remote model vs tool time" },
+        { title: "History", value: "history", description: "Recent per-turn decisions, including subagents" },
+        { title: "Judge", value: "judge", description: "Probe the local judge or pull the recommended model" },
+        { title: "Pin current model", value: "pin", description: "Force this session to the currently selected model" },
+        { title: "Release pin", value: "auto", description: "Resume automatic routing for this session" },
+        {
+          title: config.enabled ? "Disable routing" : "Enable routing",
+          value: "toggle-routing",
+          description: "Turn the router on or off without uninstalling it",
+        },
+        {
+          title: config.subagents.enabled ? "Disable subagents" : "Enable subagents",
+          value: "toggle-subagents",
+          description: "Route child sessions with their agent policy",
+        },
+        { title: "Help", value: "help", description: "Command reference" },
+        { title: "Close", value: "close", description: "Close the router menu" },
+      ],
+    })
+    if (!choice || choice === "close") return
+    if (choice === "toggle-routing") {
+      await runCommand(context, config.enabled ? "off" : "on")
+    } else if (choice === "toggle-subagents") {
+      await runCommand(context, `subagents ${config.subagents.enabled ? "off" : "on"}`)
+    } else {
+      await runCommand(context, choice)
+    }
+  }
+}
+
 async function runCommand(context, input) {
-  const [command = "status", ...rest] = String(input ?? "").trim().split(/\s+/)
+  const [command = "menu", ...rest] = String(input ?? "").trim().split(/\s+/)
   const config = readConfig({ write: true }).config
   const sessionID = currentSession(context)
 
   switch (command) {
     case "":
+    case "menu": {
+      await openMenu(context)
+      return
+    }
     case "status": {
-      await show(context, formatStatus(buildStatus({ host: HOST })))
+      await show(context, formatTuiStatus(buildStatus({ host: HOST })))
       return
     }
     case "on":
@@ -398,7 +445,8 @@ async function runCommand(context, input) {
       await show(
         context,
         [
-          "/router — status",
+          "/router — action menu",
+          "/router status",
           "/router on | off",
           "/router policy [cost|quality|latency]",
           "/router pool",

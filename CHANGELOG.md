@@ -15,6 +15,8 @@
 - The TUI part listens for `session.model.selected`, refreshes the session, and
   shows a short model-switch toast, so a routed model is visible even when the
   host footer lags.
+- `/router` now opens a navigable action menu with descriptions for every item;
+  `/router status` is a compact, aligned view instead of a long text blob.
 
 ## 0.1.0 — 2026-11-16
 
