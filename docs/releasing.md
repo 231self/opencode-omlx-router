@@ -8,7 +8,7 @@
 | Rust | stable, 1.98 tested | Core |
 | `wasm32-unknown-unknown` target | — | Core build |
 | binaryen (`wasm-opt`) | optional | Size optimisation; CI installs it |
-| npm account | — | Publish (name availability checked) |
+| npm account | — | Publish rights for `opencode-omlx-router` |
 | `gh` | authenticated | Release/tag |
 
 ```sh
@@ -49,7 +49,7 @@ Artifacts:
 
 ## Publish to npm
 
-The package name `opencode-omlx-router` is available (checked 2026-11-15).
+The release is `opencode-omlx-router@0.1.0` (2026-11-16).
 
 ```sh
 npm login                       # or set NPM_TOKEN for CI publishing

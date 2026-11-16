@@ -5,10 +5,9 @@ Per-turn model routing for [OpenCode V2](https://opencode.ai) and
 [oMLX](https://github.com/jundot/omlx), with a context optimiser that keeps each
 turn inside the chosen model's budget.
 
-> **Status: release candidate (v0.1.0).** Routing, the context optimiser,
-> subagent policy, the TUI `/router` surface, the CLI, and the Kilo shim are
-> implemented and tested. Release packaging (CI, npm) is the remaining step;
-> install commands do not work until the first publish. Design of record:
+> **Status: v0.1.0.** Routing, the context optimiser, subagent policy, the TUI
+> `/router` surface, per-turn timing, the CLI, and the Kilo shim are implemented
+> and tested. Design of record:
 > [`docs/specs/2026-11-15-opencode-omlx-router-design.md`](docs/specs/2026-11-15-opencode-omlx-router-design.md).
 
 ## Why
@@ -76,9 +75,7 @@ requires Rust with the `wasm32-unknown-unknown` target.
 
 ## Install
 
-> The package is not on npm yet. Build from a checkout today; the npm commands
-> work after the first publish. Release/build details:
-> [docs/releasing.md](docs/releasing.md).
+Release/build details: [docs/releasing.md](docs/releasing.md).
 
 ### OpenCode V2
 
@@ -108,7 +105,7 @@ kilo plugin opencode-omlx-router
 }
 ```
 
-### From a checkout (works before npm publish)
+### From a checkout (development)
 
 ```sh
 git clone https://github.com/231self/opencode-omlx-router
