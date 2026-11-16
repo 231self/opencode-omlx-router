@@ -8,6 +8,13 @@
   `pool.models` examples; `/router pool` and `omlx-router pool` now print the
   config path and the exact commands to change the pool.
 
+### Fixed
+
+- An empty `favorites` pool no longer expands to every available model, which
+  could silently route to zero-cost models the user never selected. Empty
+  favorites now pause routing; `pool.source: "available"` is the explicit
+  opt-in, and an unknown source selects nothing.
+
 ### Changed
 
 - Clearer plugin IDs: `omlx-router` (server) and `omlx-router.tui` (TUI),

@@ -162,9 +162,14 @@ Or edit `~/.config/omlx-router/config.json`:
 
 | Value | Meaning |
 |---|---|
-| `favorites` | Models favorited in OpenCode/Kilo (default; falls back to all available) |
+| `favorites` | Models favorited in OpenCode/Kilo (default). Empty favorites mean **no pool**; routing pauses rather than silently using every model |
 | `list` | Exactly `pool.models` (use `provider/model#variant` for a variant) |
-| `available` | Every eligible chat model the host advertises |
+| `available` | Every eligible chat model the host advertises (explicit opt-in) |
+
+An empty `favorites` pool does **not** fall back to all models. That prevents
+zero-cost or unintended models from being selected without your opt-in; set
+`source: "available"` if that is what you want. An unknown source selects
+nothing and reports a warning.
 
 `pool.include` / `pool.exclude` add or drop globs after the source; `maxModels`
 caps the judge's candidate table; `requireTools` and `minContext` are hard

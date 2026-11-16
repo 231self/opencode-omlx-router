@@ -631,6 +631,36 @@ export const SCENARIOS = [
   },
 
   {
+    id: "empty-favorites",
+    host: "opencode",
+    notes: "empty favorites pause routing instead of falling back to every model",
+    favorites: [],
+    config: { pool: { source: "favorites", models: [] } },
+    steps: [
+      {
+        prompt: CODE_PROMPT,
+        judge: null,
+        expect: {
+          judgeCalls: 0,
+          decisions: [
+            {
+              role: "root",
+              chosen: null,
+              source: "skip",
+              reason: "no_pool",
+              stage: "skip/no_pool",
+              applied: "none",
+              pinned: false,
+              judgeUsed: false,
+              assistantModel: FLASH,
+            },
+          ],
+        },
+      },
+    ],
+  },
+
+  {
     id: "disabled",
     host: "opencode",
     notes: "the master switch leaves the host session untouched and writes no decision",

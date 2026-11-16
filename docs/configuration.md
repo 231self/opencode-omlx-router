@@ -47,8 +47,10 @@ extra file; decision records still contain `timing.routeMs/judgeMs`.
 | `minContext` | `32000` | Minimum context window |
 
 Favorites live in the host state file: `~/.local/state/opencode/model.json` or
-`~/.local/state/kilo/model.json`, field `favorite`. Empty favorites fall back to
-all available models and emit a warning in `/router pool`.
+`~/.local/state/kilo/model.json`, field `favorite`. Empty favorites produce an
+empty pool and a warning in `/router pool`; routing pauses. This is deliberate:
+the router never opts into every model on your behalf. Use `source: "available"`
+for that. An unknown source also selects nothing.
 
 ## `judge`
 

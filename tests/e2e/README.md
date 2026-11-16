@@ -76,6 +76,7 @@ failure the workspace is kept and printed; on success it is removed unless
 | `judge-underclassifies-multifile` | OpenCode | A three-file plan is raised to complexity 4 before routing. |
 | `user-override` | OpenCode | An explicit `--model` becomes a forced pin that bypasses the judge and persists. |
 | `favorites-pool` | OpenCode | The default `favorites` pool source reads the host favorites file. |
+| `empty-favorites` | OpenCode | Empty favorites pause routing instead of expanding to every available model. |
 | `subagent-explore` | OpenCode | A child session uses the `explore` agent's latency policy independently. |
 | `kilo-boundary` | Kilo | The current turn uses the old model; the decision applies at the next boundary. |
 | `disabled` | OpenCode | The master switch leaves the host untouched and writes no decision. |

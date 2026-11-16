@@ -116,8 +116,9 @@ export function resolvePool({ models = [], providers = [], config, host = "openc
       }
     }
     if (selected.length === 0) {
-      warnings.push("favorites-empty: falling back to all available models")
-      for (const model of byKey.values()) add(model)
+      warnings.push(
+        "favorites-empty: no models selected; set pool.models, source=available, or favorite a model",
+      )
     }
   } else if (source === "list") {
     for (const entry of config?.pool?.models ?? []) {
@@ -126,8 +127,10 @@ export function resolvePool({ models = [], providers = [], config, host = "openc
       if (model) add(model, variant)
       else if (reference) warnings.push(`missing: ${reference}`)
     }
-  } else {
+  } else if (source === "available") {
     for (const model of byKey.values()) add(model)
+  } else {
+    warnings.push(`unknown pool.source: ${source}`)
   }
 
   for (const pattern of config?.pool?.include ?? []) {

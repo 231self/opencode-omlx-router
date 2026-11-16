@@ -156,7 +156,7 @@ and the model exported from the host session. See
 
 Results on OpenCode 2.3.0 / Kilo 7.6.2 / DeepSeek Flash + Pro:
 
-- 15 stub scenarios, 20 steps, all passing.
+- 16 stub scenarios, 21 steps, all passing.
 - Same-turn switching, cost/quality/latency policies, pin threshold, upward
   complexity jump, forced user override, subagent `explore` policy, judge
   timeout/HTTP fallback, malformed-verdict retry, disabled mode, and Kilo

@@ -88,13 +88,54 @@ test("favorites resolve against the catalog with variant and local flag", () => 
   expect(local.local).toBe(true)
 })
 
-test("empty favorites fall back to available models", () => {
+test("empty favorites do not expand to all available models", () => {
   const env = envWithFavorites([])
   const { pool, warnings } = resolvePool({ models: catalog(), config: config(), env })
   expect(warnings[0]).toContain("favorites-empty")
+  expect(pool).toEqual([])
+})
+
+test("source available is the explicit opt-in to every eligible model", () => {
+  const env = envWithFavorites([])
+  const { pool } = resolvePool({
+    models: catalog(),
+    config: config({
+      pool: {
+        source: "available",
+        models: [],
+        include: [],
+        exclude: [],
+        maxModels: 8,
+        requireTools: true,
+        minContext: 0,
+      },
+    }),
+    env,
+  })
   expect(pool.map((model) => model.modelID)).toContain("deepseek-flash")
   expect(pool.map((model) => model.modelID)).not.toContain("no-tools")
   expect(pool.map((model) => model.modelID)).not.toContain("old")
+})
+
+test("an unknown pool source selects nothing", () => {
+  const env = envWithFavorites([])
+  const { pool, warnings } = resolvePool({
+    models: catalog(),
+    config: config({
+      pool: {
+        source: "typo",
+        models: [],
+        include: [],
+        exclude: [],
+        maxModels: 8,
+        requireTools: true,
+        minContext: 0,
+      },
+    }),
+    env,
+  })
+  expect(pool).toEqual([])
+  expect(warnings[0]).toContain("unknown pool.source")
 })
 
 test("explicit list reports missing entries and respects exclusions", () => {
