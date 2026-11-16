@@ -27,6 +27,9 @@
 - `/router pool` is an interactive setup flow for favorites, an explicit model
   list, or the explicit all-available opt-in. When the pool is empty, a startup
   toast and the status hint point to it instead of silently routing.
+- `/router pool` shows each model's cost and quality, and `/router explain` is a
+  readable breakdown (policy, verdict, judge time, top scores, per-turn cost)
+  instead of raw JSON.
 
 ## 0.1.0 — 2026-11-16
 

@@ -75,6 +75,7 @@ function poolLines(config, models, providers) {
       [
         `${model.providerID}/${model.modelID}${model.variant && model.variant !== "default" ? `#${model.variant}` : ""}`,
         `ctx=${model.limit.context}`,
+        `cost=${formatCost(model.cost)}`,
         `local=${model.local ? "yes" : "no"}`,
         `quality=${model.qualityOverride ?? "auto"}`,
       ].join(" · "),
@@ -85,6 +86,46 @@ function poolLines(config, models, providers) {
   lines.push(`config ${configPath()}`)
   lines.push("set models: omlx-router config set pool.source list")
   lines.push(`            omlx-router config set pool.models '["provider/model", "..."]'`)
+  return lines.join("\n")
+}
+
+function formatCost(cost) {
+  const tier = Array.isArray(cost) ? cost[0] : null
+  if (!tier) return "free/unknown"
+  return `$${tier.input}/$${tier.output}`
+}
+
+function explainLines(record) {
+  const lines = [
+    `chosen   ${record.chosen ?? "none"}${record.pinned ? " · pinned" : ""}`,
+    `source   ${record.source ?? "?"} · ${record.reason ?? "?"} · ${record.stage ?? ""}`,
+    `policy   ${record.policy ?? "?"} · complexity ${record.complexity ?? "?"} · ${record.turnClass ?? "?"}`,
+    `applied  ${record.applied ?? "?"}${record.error ? ` · error ${record.error}` : ""}`,
+  ]
+  const verdict = record.verdict
+  if (verdict) {
+    lines.push(
+      `verdict  ${verdict.task}/${verdict.complexity} · ${verdict.reasoningNeed} reasoning · ${verdict.contextNeed} context · tools ${verdict.needsTools ? "yes" : "no"} · confidence ${Number(verdict.confidence ?? 0).toFixed(2)}`,
+    )
+  }
+  const judge = record.judge ?? {}
+  if (judge.used !== undefined || judge.ms !== undefined) {
+    lines.push(`judge    used ${judge.used ? "yes" : "no"} · cached ${judge.cached ? "yes" : "no"} · ${judge.ms ?? 0} ms`)
+  }
+  const timing = record.timing
+  if (timing) {
+    lines.push(`timing   route ${formatMilliseconds(timing.routeMs)} · judge ${formatMilliseconds(timing.judgeMs)} · switch ${formatMilliseconds(timing.switchMs)}`)
+  }
+  const top = Array.isArray(record.top) ? record.top : []
+  if (top.length > 0) {
+    lines.push("top")
+    for (const entry of top) {
+      lines.push(
+        `  ${entry.providerID}/${entry.id}${entry.variant && entry.variant !== "default" ? `#${entry.variant}` : ""}  score ${Number(entry.score ?? 0).toFixed(3)}  cost $${Number(entry.costUsd ?? 0).toFixed(6)}`,
+      )
+    }
+  }
+  if (record.hint) lines.push(`hint     ${record.hint}`)
   return lines.join("\n")
 }
 
@@ -359,6 +400,7 @@ async function openMenu(context) {
         { title: "Pool", value: "pool", description: "Models available to the router and how to edit them" },
         { title: "Timing", value: "timing", description: "Local judge vs remote model vs tool time" },
         { title: "History", value: "history", description: "Recent per-turn decisions, including subagents" },
+        { title: "Explain last decision", value: "explain", description: "Why this session chose or kept its model" },
         { title: "Judge", value: "judge", description: "Probe the local judge or pull the recommended model" },
         { title: "Pin current model", value: "pin", description: "Force this session to the currently selected model" },
         { title: "Release pin", value: "auto", description: "Resume automatic routing for this session" },
@@ -477,7 +519,7 @@ async function runCommand(context, input) {
       const hash = sessionID ? sessionHash(sessionID) : null
       const decisions = readDecisions(HOST, 100).reverse()
       const record = decisions.find((entry) => !hash || entry.session === hash)
-      await show(context, record ? JSON.stringify(record, null, 2) : "no decision for this session yet")
+      await show(context, record ? explainLines(record) : "no decision for this session yet")
       return
     }
     case "pin": {

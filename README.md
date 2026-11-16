@@ -465,10 +465,10 @@ the CLI for headless `opencode run`/`serve`, OpenCode Desktop, and Kilo.
 | `/router status` | Compact status: state, judge, pins, timing, last decision |
 | `/router on` / `/router off` | Enable or disable routing |
 | `/router policy` | Interactive picker for `cost` / `quality` / `latency`; clears pins |
-| `/router pool` | Interactive pool setup: favorites, explicit list, or all available; shows the resolved pool |
+| `/router pool` | Interactive pool setup: favorites, explicit list, or all available; shows context, cost, and quality per model |
 | `/router history [n]` | Recent decisions, including subagents and judge/route time |
 | `/router timing [n]` | Local judge vs remote model vs tool time per turn |
-| `/router explain` | Full trace of this session's last decision |
+| `/router explain` | Readable why: chosen model, policy, verdict, top scores, and per-turn costs |
 | `/router pin` / `/router auto` | Force or release a model pin for this session |
 | `/router judge` | Probe oMLX directly: model, latency, sample verdict |
 | `/router subagents on\|off` | Toggle subagent routing |

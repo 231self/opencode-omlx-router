@@ -5,7 +5,7 @@ import path from "node:path"
 
 import tui from "../src/tui.js"
 import { readConfig, saveConfig } from "../src/config.js"
-import { appendTurn } from "../src/state.js"
+import { appendDecision, appendTurn, sessionHash } from "../src/state.js"
 
 function environment() {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "omlx-router-tui-"))
@@ -287,4 +287,47 @@ test("/router pool saves an explicit model list", async () => {
   const config = readConfig({ write: false }).config
   expect(config.pool.source).toBe("list")
   expect(config.pool.models).toEqual(["deepseek/deepseek-flash"])
+})
+
+test("/router explain shows the decision, scores, costs, and verdict", async () => {
+  environment()
+  appendDecision(
+    "opencode",
+    {
+      ts: Date.now(),
+      session: sessionHash("ses_1"),
+      chosen: "kilo/anthropic/claude-fable-5.2",
+      source: "judge",
+      reason: "first-turn",
+      stage: "judge/cost",
+      policy: "cost",
+      complexity: 4,
+      turnClass: "agentic",
+      applied: "same-turn",
+      pinned: false,
+      judge: { used: true, cached: false, ms: 700 },
+      timing: { routeMs: 900, judgeMs: 700, coreMs: 5, switchMs: 2 },
+      verdict: {
+        task: "edit",
+        complexity: 4,
+        needsTools: true,
+        reasoningNeed: "high",
+        contextNeed: "medium",
+        confidence: 0.95,
+      },
+      top: [
+        { providerID: "kilo", id: "anthropic/claude-fable-5.2", score: 0.71, costUsd: 0.008 },
+        { providerID: "deepseek", id: "deepseek-v4-pro", score: 0.4, costUsd: 0.002 },
+      ],
+    },
+    process.env,
+  )
+  const { context, messages, command } = fakeContext()
+  tui.setup(context)
+  await command().run("explain")
+  const text = messages.map((entry) => String(entry.message)).join("\n")
+  expect(text).toContain("chosen   kilo/anthropic/claude-fable-5.2")
+  expect(text).toContain("verdict  edit/4")
+  expect(text).toContain("score 0.710")
+  expect(text).toContain("cost $0.008000")
 })
