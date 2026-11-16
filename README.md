@@ -171,6 +171,25 @@ caps the judge's candidate table; `requireTools` and `minContext` are hard
 filters. `/router pool` (or `omlx-router pool`) shows the resolved pool, the
 config path, and the exact commands to change it.
 
+If model names do not contain parameter sizes (for example `deepseek-flash`
+and `deepseek-v4-pro`), set explicit quality scores so the quality floor can
+distinguish them:
+
+```jsonc
+{
+  "quality": {
+    "overrides": {
+      "deepseek/deepseek-flash": 0.55,
+      "deepseek/deepseek-v4-pro": 0.8
+    }
+  }
+}
+```
+
+Quality is `0..1`; the router uses it with complexity/reasoning requirements.
+Without overrides it falls back to price, context, name-size, and reasoning
+heuristics.
+
 ## Choose a judge
 
 The judge is a small instruct model served by oMLX. It answers one short JSON
