@@ -571,10 +571,53 @@ export const SCENARIOS = [
               reason: "first-turn",
               stage: "judge/quality",
               policy: "quality",
-              complexity: 2,
+              complexity: 3,
               verdict: {
                 task: "review",
-                complexity: 2,
+                complexity: 3,
+                needsTools: true,
+                reasoningNeed: "high",
+                contextNeed: "small",
+              },
+              assistantModel: PRO,
+            }),
+          ],
+        },
+      },
+    ],
+  },
+
+  {
+    id: "judge-underclassifies-multifile",
+    host: "opencode",
+    notes: "a multi-file refactor is raised to complexity 4 before the model is chosen",
+    config: { policy: "cost" },
+    steps: [
+      {
+        prompt:
+          "Plan the reorganisation across src/parser.rs, src/lexer.rs, and src/ast.rs. Without tools, reply with the steps.",
+        judge: {
+          task: "plan",
+          complexity: 3,
+          needsTools: true,
+          needsVision: false,
+          contextNeed: "small",
+          reasoningNeed: "medium",
+          confidence: 0.9,
+        },
+        expect: {
+          judgeCalls: 1,
+          decisions: [
+            decision({
+              chosen: PRO,
+              source: "judge",
+              reason: "first-turn",
+              stage: "judge/cost",
+              policy: "cost",
+              complexity: 4,
+              verdict: {
+                task: "plan",
+                complexity: 4,
                 needsTools: true,
                 reasoningNeed: "high",
                 contextNeed: "small",

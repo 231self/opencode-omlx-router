@@ -229,6 +229,30 @@ mod tests {
     }
 
     #[test]
+    fn reconcile_raises_a_multi_file_refactor() {
+        let envelope = envelope::build(&TurnInfo {
+            prompt_text:
+                "Refactor the parser across src/parser.rs, src/lexer.rs, and src/ast.rs. Keep the tests passing and update the call sites."
+                    .to_string(),
+            ..TurnInfo::default()
+        });
+        let verdict = reconcile(
+            Verdict {
+                task: "refactor".to_string(),
+                complexity: 3,
+                needs_tools: true,
+                context_need: "small".to_string(),
+                reasoning_need: "medium".to_string(),
+                confidence: 0.9,
+                ..Verdict::default()
+            },
+            &envelope,
+        );
+        assert!(verdict.complexity >= 4);
+        assert_eq!(verdict.reasoning_need, "high");
+    }
+
+    #[test]
     fn reconcile_lifts_large_context() {
         let envelope = envelope::build(&TurnInfo {
             prompt_text: "continue the refactor".to_string(),

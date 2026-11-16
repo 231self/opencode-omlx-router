@@ -156,7 +156,7 @@ and the model exported from the host session. See
 
 Results on OpenCode 2.3.0 / Kilo 7.6.2 / DeepSeek Flash + Pro:
 
-- 14 stub scenarios, 19 steps, all passing.
+- 15 stub scenarios, 20 steps, all passing.
 - Same-turn switching, cost/quality/latency policies, pin threshold, upward
   complexity jump, forced user override, subagent `explore` policy, judge
   timeout/HTTP fallback, malformed-verdict retry, disabled mode, and Kilo
@@ -217,6 +217,28 @@ Verified against the live oMLX 0.6.4 admin API without starting a large download
   made **no** download request. `judge status` and consent gating are covered by
   fake-server tests; the download path uses `/api/hf/download` and
   `/api/hf/tasks` and triggers oMLX model rediscovery on completion.
+
+## Routing-quality eval (2026-11-16)
+
+`bun run routing:eval -- --runs 3` compares the model chosen with the real 4B
+verdict against the model the same cost scorer would choose with a ground-truth
+verdict (the cheapest adequate model).
+
+Initial run: **7/9 matched, 2 under-routes, 0 over-routes, -20% cost delta**.
+The misses were a three-file refactor and a design-comparison turn; both were
+under-provisioned because the raw verdict stayed at complexity 3/2.
+
+After adding a `multiFile` signal and a minimum complexity of 3 for
+planning/review:
+
+```text
+routing match 27/27 · under-routed 0 · over-routed 0 · mean cost delta 0%
+```
+
+The eval exits non-zero on an under-route, so it is a release gate. The
+deterministic floor changes are also covered by Rust unit tests and the
+`judge-underclassifies-multifile` prompt scenario, so CI catches them without
+oMLX.
 
 ## 4B judge calibration (2026-11-15)
 

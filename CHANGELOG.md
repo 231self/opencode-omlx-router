@@ -52,8 +52,13 @@ First release candidate.
   debug, review, and planning turns. The judge prompt now uses few-shot examples
   and an explicit "do not copy" rule; the core also raises the judge verdict to
   a deterministic floor from code, error, planning, review, and context signals.
-- Marker matching now uses word boundaries for word-like markers, so `Inspect`
-  no longer matches `spec` and `prefix` no longer matches `fix`.
+- Marker matching now uses word boundaries and common inflections, so `Inspect`
+  no longer matches `spec`, `prefix` no longer matches `fix`, and `designs` /
+  `tests` still match their markers.
+- Multi-file turns now set a `multiFile` signal; planning and review turns have
+  a minimum complexity of 3. The routing eval found two under-routes (a
+  three-file refactor and a design comparison) before this change; both now
+  match the oracle.
 - The default judge timeout is 5 s: the 4B is usually under 1 s but cold calls
   measured 3.4 s.
 

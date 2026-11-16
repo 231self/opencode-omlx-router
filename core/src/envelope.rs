@@ -14,6 +14,7 @@ pub struct Signals {
     pub has_images: bool,
     pub large_context: bool,
     pub repeated_failures: bool,
+    pub multi_file: bool,
 }
 
 #[derive(Debug, Clone, Default, Serialize)]
@@ -86,22 +87,55 @@ const REVIEW_MARKERS: &[&str] = &[
     "security",
 ];
 
+const CODE_EXTENSIONS: &[&str] = &[
+    ".rs", ".ts", ".tsx", ".js", ".jsx", ".py", ".go", ".java", ".kt", ".swift", ".c", ".h",
+    ".cpp", ".rb", ".sh",
+];
+
 fn contains_any(haystack: &str, needles: &[&str]) -> bool {
     needles.iter().any(|needle| haystack.contains(needle))
 }
 
-fn contains_word(haystack: &str, word: &str) -> bool {
+fn code_file_count(haystack: &str) -> usize {
     haystack
-        .split(|character: char| !character.is_alphanumeric() && character != '-')
-        .any(|token| token == word)
+        .split(|character: char| {
+            character.is_whitespace()
+                || matches!(
+                    character,
+                    ',' | ';' | '(' | ')' | '"' | '\'' | '`' | ':' | '[' | ']'
+                )
+        })
+        .filter(|token| {
+            CODE_EXTENSIONS
+                .iter()
+                .any(|extension| token.ends_with(extension))
+        })
+        .count()
 }
 
-/// Word-like markers match whole tokens; punctuation and phrases use substring
-/// matching. Without this, `Inspect` would match `spec` and `prefix` would
-/// match `fix`.
+const WORD_SUFFIXES: &[&str] = &[
+    "s", "es", "ed", "d", "ing", "ning", "ging", "ned", "er", "ers", "ation", "ication",
+];
+
+fn contains_word(haystack: &str, word: &str) -> bool {
+    let stem = word.strip_suffix('e').unwrap_or(word);
+    haystack
+        .split(|character: char| !character.is_alphanumeric() && character != '-')
+        .any(|token| {
+            if token == word || token == stem {
+                return true;
+            }
+            token.starts_with(stem) && WORD_SUFFIXES.contains(&&token[stem.len()..])
+        })
+}
+
+/// Word-like markers match whole tokens (with common inflections); punctuation
+/// and multi-word phrases use substring matching. Without this, `Inspect` would
+/// match `spec`, `prefix` would match `fix`, and `designs` would be missed.
 fn contains_marker(haystack: &str, marker: &str) -> bool {
-    if marker.chars().all(|character| character.is_alphanumeric()) {
-        contains_word(haystack, marker)
+    let trimmed = marker.trim();
+    if trimmed.chars().all(|character| character.is_alphanumeric()) {
+        contains_word(haystack, trimmed)
     } else {
         haystack.contains(marker)
     }
@@ -133,6 +167,7 @@ pub fn build(turn: &TurnInfo) -> Envelope {
         .prompt_tokens
         .unwrap_or_else(|| estimate_tokens(&turn.prompt_text));
     let estimated_input_tokens = prompt_tokens + turn.last_context_tokens;
+    let file_count = code_file_count(&text);
 
     let signals = Signals {
         code: contains_any(&text, CODE_MARKERS),
@@ -144,6 +179,7 @@ pub fn build(turn: &TurnInfo) -> Envelope {
         has_images: turn.images > 0,
         large_context: estimated_input_tokens > 60_000,
         repeated_failures: turn.tool_failures >= 3,
+        multi_file: file_count >= 3 || (file_count >= 2 && text.contains("across")),
     };
 
     let trivial = prompt_tokens < 150
@@ -153,6 +189,7 @@ pub fn build(turn: &TurnInfo) -> Envelope {
         && !signals.error_trace
         && !signals.planning
         && !signals.review
+        && !signals.multi_file
         && !signals.has_images
         && turn.last_context_tokens < 8_000;
 
@@ -181,9 +218,13 @@ pub fn build(turn: &TurnInfo) -> Envelope {
     complexity += u8::from(signals.agentic);
     complexity += u8::from(signals.error_trace);
     complexity += u8::from(signals.planning || signals.review);
+    complexity += u8::from(signals.multi_file);
     complexity += u8::from(estimated_input_tokens > 8_000);
     complexity += u8::from(turn.tool_failures > 0);
     complexity = complexity.clamp(1, 5);
+    if signals.planning || signals.review {
+        complexity = complexity.max(3);
+    }
 
     Envelope {
         turn_class: turn_class.to_string(),
@@ -250,6 +291,35 @@ mod tests {
         assert!(specification.signals.planning);
         let review = build(&turn("review the code"));
         assert!(review.signals.review);
+        let designs = build(&turn("compare the designs"));
+        assert!(designs.signals.planning);
+        let tests = build(&turn("run the tests"));
+        assert!(tests.signals.agentic);
+        let special = build(&turn("special handling"));
+        assert!(!special.signals.planning);
+        let addressing = build(&turn("addressing the issue"));
+        assert!(!addressing.signals.agentic);
+    }
+
+    #[test]
+    fn multi_file_refactor_sets_a_high_floor() {
+        let envelope = build(&turn(
+            "Refactor the parser across src/parser.rs, src/lexer.rs, and src/ast.rs. Keep the tests passing and update the call sites.",
+        ));
+        assert!(envelope.signals.multi_file);
+        assert!(envelope.complexity_hint >= 4);
+    }
+
+    #[test]
+    fn planning_and_review_have_a_minimum_complexity_three() {
+        let research = build(&turn("Compare three parser designs and recommend one."));
+        assert!(research.signals.planning);
+        assert!(research.complexity_hint >= 3);
+        let review = build(&turn(
+            "Review this authentication design for security issues.",
+        ));
+        assert!(review.signals.review);
+        assert!(review.complexity_hint >= 3);
     }
 
     #[test]

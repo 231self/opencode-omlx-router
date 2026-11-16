@@ -73,6 +73,7 @@ failure the workspace is kept and printed; on success it is removed unless
 | `judge-unreachable` | OpenCode | A dead judge endpoint falls back to deterministic heuristics. |
 | `judge-malformed` | OpenCode | Unparsable output is retried once, then falls back. |
 | `judge-underclassifies` | OpenCode | A deliberately weak verdict is raised to the signal floor before routing. |
+| `judge-underclassifies-multifile` | OpenCode | A three-file plan is raised to complexity 4 before routing. |
 | `user-override` | OpenCode | An explicit `--model` becomes a forced pin that bypasses the judge and persists. |
 | `favorites-pool` | OpenCode | The default `favorites` pool source reads the host favorites file. |
 | `subagent-explore` | OpenCode | A child session uses the `explore` agent's latency policy independently. |
