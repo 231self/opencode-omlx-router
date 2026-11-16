@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.1.2 — 2026-11-16
+
+### Added
+
+- `pin.mode`: `cache` (sticky), `balanced` (default), or `switch` (best every
+  turn, cold-cache scoring). `/router pin-mode` and the Pin mode menu item
+  expose it.
+- `/router explain` is a readable breakdown (policy, verdict, judge time, top
+  scores, per-turn cost), and `/router pool` shows each model's cost.
+
+### Fixed
+
+- Pins release after `pin.maxTurns` (8) or `pin.maxAgeMs` (30 min) even while
+  active. A model costing more than `pin.costSwitchRatio` (4×) the cheapest
+  adequate challenger is replaced even if it has the higher score, because one
+  cache miss is cheaper than keeping an overpriced incumbent indefinitely.
+
 ## 0.1.1 — 2026-11-16
 
 ### Added
@@ -27,9 +44,6 @@
 - `/router pool` is an interactive setup flow for favorites, an explicit model
   list, or the explicit all-available opt-in. When the pool is empty, a startup
   toast and the status hint point to it instead of silently routing.
-- `/router pool` shows each model's cost and quality, and `/router explain` is a
-  readable breakdown (policy, verdict, judge time, top scores, per-turn cost)
-  instead of raw JSON.
 
 ## 0.1.0 — 2026-11-16
 
@@ -103,13 +117,6 @@ First release.
   idle TTL only switches when a different model is actually best.
 - A rejected `switchModel` call is recorded with `applied: "none"` and the
   error, instead of claiming the decision was applied.
-- Pins now release after `pin.maxTurns` (8) or `pin.maxAgeMs` (30 min) even
-  while active, and a model costing more than `pin.costSwitchRatio` (4×) an
-  adequate challenger no longer stays pinned. The one-time cache miss is
-  cheaper than keeping an overpriced incumbent indefinitely.
-- `pin.mode` adds an explicit choice: `cache` (sticky), `balanced` (default),
-  or `switch` (best every turn, cold-cache scoring). `/router pin-mode` and the
-  Pin mode menu item expose it.
 
 ### Notes
 

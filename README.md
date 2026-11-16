@@ -7,7 +7,7 @@ turn inside the chosen model's budget.
 
 > **npm package:** [`@231self/opencode-omlx-router`](https://www.npmjs.com/package/@231self/opencode-omlx-router)
 >
-> **Status: v0.1.1.** Routing, the context optimiser, subagent policy, the TUI
+> **Status: v0.1.2.** Routing, the context optimiser, subagent policy, the TUI
 > `/router` surface, per-turn timing, the CLI, and the Kilo shim are implemented
 > and tested. Design of record:
 > [`docs/specs/2026-11-15-opencode-omlx-router-design.md`](docs/specs/2026-11-15-opencode-omlx-router-design.md).
