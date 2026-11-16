@@ -165,6 +165,54 @@ pub fn select(
         };
     }
 
+    let pin_mode = match settings.pin.mode.as_str() {
+        "cache" => "cache",
+        "switch" => "switch",
+        _ => "balanced",
+    };
+
+    if pin_mode == "switch" {
+        // Accept the cache miss and always take the best candidate. User pins
+        // still win because the forced branch above returns first.
+        let switch_best = choose(candidates, mode, |_| true).expect("candidates are non-empty");
+        let previous = state.model.clone();
+        let chosen = switch_best.model.reference();
+        let switched = previous
+            .as_ref()
+            .is_none_or(|model| !model.same_model(&chosen));
+        if switched {
+            if let Some(previous) = previous {
+                state.away.push(Away {
+                    provider_id: previous.provider_id,
+                    id: previous.id,
+                    at: now,
+                });
+                let keep = turnover * 2;
+                if state.away.len() > keep {
+                    state.away.drain(0..state.away.len() - keep);
+                }
+            }
+            state.switch_count = state.switch_count.saturating_add(1);
+        }
+        state.model = Some(chosen.clone());
+        state.since = now;
+        state.pinned_turns = 1;
+        state.last_turn_at = now;
+        state.last_turn_class = envelope.turn_class.clone();
+        state.last_complexity = verdict.complexity;
+        state.forced = false;
+        state.source = "route".to_string();
+        return Selection {
+            chosen: chosen.clone(),
+            pinned: false,
+            source: "route".to_string(),
+            reason: "best-model".to_string(),
+            top: top_candidates(candidates, &chosen, 3),
+            pin: state,
+            switched,
+        };
+    }
+
     match incumbent {
         None => {
             reason = if incumbent_ref.is_some() {
@@ -176,17 +224,60 @@ pub fn select(
             switched = true;
         }
         Some(current) => {
-            // The incumbent is still the best candidate: refresh the pin. This
-            // also covers a complexity drop and an idle TTL, neither of which
-            // should be reported as a switch when the model does not change.
+            let idle = settings.pin.idle_ttl_ms > 0.0
+                && state.last_turn_at > 0.0
+                && now - state.last_turn_at > settings.pin.idle_ttl_ms;
+            // Only an upward jump forces a switch. A simpler follow-up turn
+            // should be able to de-escalate through the normal threshold.
+            let jump = state.last_complexity > 0
+                && verdict.complexity >= state.last_complexity.saturating_add(2);
+            let age = settings.pin.max_age_ms > 0.0
+                && state.since > 0.0
+                && now - state.since > settings.pin.max_age_ms;
+            let turns = settings.pin.max_turns > 0 && state.pinned_turns >= settings.pin.max_turns;
+
+            // Compare the incumbent with the cheapest *adequate* candidate,
+            // not only the highest-scoring one. A one-time cache miss is worth
+            // paying when the incumbent costs multiples of an adequate model.
+            let cheapest_adequate = candidates
+                .iter()
+                .filter(|candidate| candidate.quality + 1e-9 >= candidate.required)
+                .filter(|candidate| !is_blocked(&state, &candidate.model.reference(), turnover))
+                .min_by(|left, right| {
+                    left.cost_usd
+                        .partial_cmp(&right.cost_usd)
+                        .unwrap_or(std::cmp::Ordering::Equal)
+                        .then_with(|| {
+                            right
+                                .score
+                                .partial_cmp(&left.score)
+                                .unwrap_or(std::cmp::Ordering::Equal)
+                        })
+                })
+                .cloned();
+            let cost_candidate = cheapest_adequate.filter(|candidate| {
+                !candidate
+                    .model
+                    .reference()
+                    .same_model(&current.model.reference())
+                    && settings.pin.cost_switch_ratio > 0.0
+                    && candidate.cost_usd > 0.0
+                    && current.cost_usd > candidate.cost_usd * settings.pin.cost_switch_ratio
+            });
+            let cost_release = cost_candidate.is_some();
+
+            // The incumbent is still the best candidate and there is no cheaper
+            // adequate alternative: refresh the pin.
             if best
                 .model
                 .reference()
                 .same_model(&current.model.reference())
+                && !cost_release
             {
                 state.last_turn_at = now;
                 state.last_turn_class = envelope.turn_class.clone();
                 state.last_complexity = verdict.complexity;
+                state.pinned_turns = state.pinned_turns.saturating_add(1);
                 return Selection {
                     chosen: current.model.reference(),
                     pinned: true,
@@ -198,20 +289,19 @@ pub fn select(
                 };
             }
 
-            let idle = settings.pin.idle_ttl_ms > 0.0
-                && state.last_turn_at > 0.0
-                && now - state.last_turn_at > settings.pin.idle_ttl_ms;
-            // Only an upward jump forces a switch. A simpler follow-up turn
-            // should be able to de-escalate through the normal threshold.
-            let jump = state.last_complexity > 0
-                && verdict.complexity >= state.last_complexity.saturating_add(2);
             let delta = best.score - current.score;
             let challenger_blocked = is_blocked(&state, &best.model.reference(), turnover);
-            let keep = !idle && !jump && delta <= settings.pin.switch_threshold;
-            if keep || (challenger_blocked && delta <= settings.pin.switch_threshold.max(0.0)) {
+            let within_threshold = pin_mode == "cache" || delta <= settings.pin.switch_threshold;
+            let keep = !idle && !jump && !age && !turns && !cost_release && within_threshold;
+            if keep
+                || (!cost_release
+                    && challenger_blocked
+                    && delta <= settings.pin.switch_threshold.max(0.0))
+            {
                 state.last_turn_at = now;
                 state.last_turn_class = envelope.turn_class.clone();
                 state.last_complexity = verdict.complexity;
+                state.pinned_turns = state.pinned_turns.saturating_add(1);
                 return Selection {
                     chosen: current.model.reference(),
                     pinned: true,
@@ -226,10 +316,16 @@ pub fn select(
                 "idle-switch".to_string()
             } else if jump {
                 "complexity-jump".to_string()
+            } else if cost_release {
+                "cheaper-model".to_string()
+            } else if age {
+                "pin-age".to_string()
+            } else if turns {
+                "pin-turns".to_string()
             } else {
                 "better-model".to_string()
             };
-            chosen_candidate = Some(best.clone());
+            chosen_candidate = Some(cost_candidate.unwrap_or_else(|| best.clone()));
             switched = true;
         }
     }
@@ -251,7 +347,8 @@ pub fn select(
     }
     let chosen = chosen_candidate.model.reference();
     state.model = Some(chosen.clone());
-    state.since = if state.since > 0.0 { state.since } else { now };
+    state.since = now;
+    state.pinned_turns = 1;
     state.switch_count = state.switch_count.saturating_add(1);
     state.last_turn_at = now;
     state.last_turn_class = envelope.turn_class.clone();
@@ -518,6 +615,220 @@ mod tests {
         );
         assert_eq!(selection.chosen.id, reference.id);
         assert!(selection.pin.forced);
+    }
+
+    #[test]
+    fn a_much_cheaper_adequate_model_releases_the_pin() {
+        let candidates = vec![
+            candidate("a", 0.80, 0.7, 10.0),
+            candidate("b", 0.85, 0.7, 1.0),
+        ];
+        let pin = Pin {
+            model: Some(candidates[0].model.reference()),
+            since: 900.0,
+            last_turn_at: 950.0,
+            last_turn_class: "routine".to_string(),
+            last_complexity: 2,
+            ..Pin::default()
+        };
+        let mut settings = settings();
+        settings.pin.cost_switch_ratio = 4.0;
+        let selection = select(
+            &candidates,
+            &envelope(),
+            &verdict(2),
+            &settings,
+            Some(&pin),
+            1000.0,
+            "judge",
+            Mode::Decide,
+        );
+        assert_eq!(selection.chosen.id, "b");
+        assert!(selection.switched);
+        assert_eq!(selection.reason, "cheaper-model");
+    }
+
+    #[test]
+    fn an_inadequate_cheap_model_does_not_release_the_pin() {
+        let candidates = vec![
+            candidate("a", 0.80, 0.7, 10.0),
+            candidate("b", 0.85, 0.4, 1.0),
+        ];
+        let pin = Pin {
+            model: Some(candidates[0].model.reference()),
+            since: 900.0,
+            last_turn_at: 950.0,
+            last_turn_class: "routine".to_string(),
+            last_complexity: 2,
+            ..Pin::default()
+        };
+        let selection = select(
+            &candidates,
+            &envelope(),
+            &verdict(2),
+            &settings(),
+            Some(&pin),
+            1000.0,
+            "judge",
+            Mode::Decide,
+        );
+        assert_eq!(selection.chosen.id, "a");
+        assert!(selection.pinned);
+    }
+
+    #[test]
+    fn switch_mode_always_takes_the_best_model() {
+        let candidates = vec![
+            candidate("a", 0.80, 0.7, 1.0),
+            candidate("b", 0.85, 0.7, 1.0),
+        ];
+        let pin = Pin {
+            model: Some(candidates[0].model.reference()),
+            since: 900.0,
+            last_turn_at: 950.0,
+            last_turn_class: "routine".to_string(),
+            last_complexity: 2,
+            ..Pin::default()
+        };
+        let mut settings = settings();
+        settings.pin.mode = "switch".to_string();
+        let selection = select(
+            &candidates,
+            &envelope(),
+            &verdict(2),
+            &settings,
+            Some(&pin),
+            1000.0,
+            "judge",
+            Mode::Decide,
+        );
+        assert_eq!(selection.chosen.id, "b");
+        assert!(!selection.pinned);
+        assert_eq!(selection.source, "route");
+        assert_eq!(selection.reason, "best-model");
+    }
+
+    #[test]
+    fn cache_mode_keeps_the_incumbent_within_the_cache() {
+        let candidates = vec![
+            candidate("a", 0.80, 0.7, 1.0),
+            candidate("b", 0.85, 0.7, 1.0),
+        ];
+        let pin = Pin {
+            model: Some(candidates[0].model.reference()),
+            since: 900.0,
+            last_turn_at: 950.0,
+            last_turn_class: "routine".to_string(),
+            last_complexity: 2,
+            ..Pin::default()
+        };
+        let mut settings = settings();
+        settings.pin.mode = "cache".to_string();
+        let selection = select(
+            &candidates,
+            &envelope(),
+            &verdict(2),
+            &settings,
+            Some(&pin),
+            1000.0,
+            "judge",
+            Mode::Decide,
+        );
+        assert_eq!(selection.chosen.id, "a");
+        assert!(selection.pinned);
+        assert_eq!(selection.reason, "pin-kept");
+    }
+
+    #[test]
+    fn cost_release_works_when_the_incumbent_has_the_higher_score() {
+        let candidates = vec![
+            candidate("a", 0.90, 0.7, 10.0),
+            candidate("b", 0.85, 0.7, 1.0),
+        ];
+        let pin = Pin {
+            model: Some(candidates[0].model.reference()),
+            since: 900.0,
+            last_turn_at: 950.0,
+            last_turn_class: "routine".to_string(),
+            last_complexity: 2,
+            ..Pin::default()
+        };
+        let mut settings = settings();
+        settings.pin.cost_switch_ratio = 4.0;
+        let selection = select(
+            &candidates,
+            &envelope(),
+            &verdict(2),
+            &settings,
+            Some(&pin),
+            1000.0,
+            "judge",
+            Mode::Decide,
+        );
+        assert_eq!(selection.chosen.id, "b");
+        assert_eq!(selection.reason, "cheaper-model");
+    }
+
+    #[test]
+    fn a_pin_turn_limit_forces_reconsideration() {
+        let candidates = vec![
+            candidate("a", 0.80, 0.7, 1.0),
+            candidate("b", 0.85, 0.7, 1.0),
+        ];
+        let pin = Pin {
+            model: Some(candidates[0].model.reference()),
+            since: 900.0,
+            last_turn_at: 950.0,
+            last_turn_class: "routine".to_string(),
+            last_complexity: 2,
+            pinned_turns: 8,
+            ..Pin::default()
+        };
+        let mut settings = settings();
+        settings.pin.max_turns = 8;
+        let selection = select(
+            &candidates,
+            &envelope(),
+            &verdict(2),
+            &settings,
+            Some(&pin),
+            1000.0,
+            "judge",
+            Mode::Decide,
+        );
+        assert_eq!(selection.chosen.id, "b");
+        assert_eq!(selection.reason, "pin-turns");
+    }
+
+    #[test]
+    fn a_pin_age_limit_forces_reconsideration() {
+        let candidates = vec![
+            candidate("a", 0.80, 0.7, 1.0),
+            candidate("b", 0.85, 0.7, 1.0),
+        ];
+        let pin = Pin {
+            model: Some(candidates[0].model.reference()),
+            since: 1000.0,
+            last_turn_at: 1000.0,
+            last_turn_class: "routine".to_string(),
+            last_complexity: 2,
+            ..Pin::default()
+        };
+        let mut settings = settings();
+        settings.pin.idle_ttl_ms = 0.0;
+        settings.pin.max_age_ms = 300_000.0;
+        let selection = select(
+            &candidates,
+            &envelope(),
+            &verdict(2),
+            &settings,
+            Some(&pin),
+            400_000.0,
+            "judge",
+            Mode::Decide,
+        );
+        assert_eq!(selection.chosen.id, "b");
+        assert_eq!(selection.reason, "pin-age");
     }
 
     #[test]

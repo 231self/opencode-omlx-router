@@ -397,6 +397,7 @@ async function openMenu(context) {
       options: [
         { title: "Status", value: "status", description: "State, judge, pool, pins, and the last decision" },
         { title: "Policy", value: "policy", description: "Cost / quality / latency; clears pins when changed" },
+        { title: "Pin mode", value: "pin-mode", description: "Cache, balanced, or switch every turn" },
         { title: "Pool", value: "pool", description: "Models available to the router and how to edit them" },
         { title: "Timing", value: "timing", description: "Local judge vs remote model vs tool time" },
         { title: "History", value: "history", description: "Recent per-turn decisions, including subagents" },
@@ -474,6 +475,46 @@ async function runCommand(context, input) {
       saveConfig({ ...config, policy: choice })
       clearPins(HOST)
       await context.ui.toast.show({ title: "oMLX Router", message: `policy ${choice}`, variant: "success" })
+      return
+    }
+    case "pin-mode":
+    case "pinmode": {
+      const modes = ["cache", "balanced", "switch"]
+      if (rest[0]) {
+        if (!modes.includes(rest[0])) {
+          await show(context, "pin mode must be cache, balanced, or switch")
+          return
+        }
+        saveConfig({ ...config, pin: { ...config.pin, mode: rest[0] } })
+        clearPins(HOST)
+        await context.ui.toast.show({ title: "oMLX Router", message: `pin mode ${rest[0]}`, variant: "success" })
+        return
+      }
+      const choice = await context.ui.dialog.select({
+        title: "oMLX Router pin mode",
+        current: config.pin.mode ?? "balanced",
+        options: [
+          {
+            title: "Cache",
+            value: "cache",
+            description: "Keep the incumbent to reuse the prompt cache; switch only on hard breaks",
+          },
+          {
+            title: "Balanced",
+            value: "balanced",
+            description: "Keep unless a challenger clearly wins; release on age, turns, or a much cheaper adequate model",
+          },
+          {
+            title: "Switch every turn",
+            value: "switch",
+            description: "Always take the best model and accept the one-time cache miss",
+          },
+        ],
+      })
+      if (!choice) return
+      saveConfig({ ...config, pin: { ...config.pin, mode: choice } })
+      clearPins(HOST)
+      await context.ui.toast.show({ title: "oMLX Router", message: `pin mode ${choice}`, variant: "success" })
       return
     }
     case "pool": {
@@ -617,6 +658,7 @@ async function runCommand(context, input) {
           "/router status",
           "/router on | off",
           "/router policy [cost|quality|latency]",
+          "/router pin-mode [cache|balanced|switch]",
           "/router pool",
           "/router history [n]",
           "/router timing [n]",

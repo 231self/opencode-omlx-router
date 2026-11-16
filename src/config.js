@@ -34,8 +34,12 @@ export const DEFAULT_CONFIG = {
     },
   },
   pin: {
+    mode: "balanced",
     switchThreshold: 0.12,
     idleTtlMs: 300000,
+    maxAgeMs: 1800000,
+    maxTurns: 8,
+    costSwitchRatio: 4.0,
     flipFlopTurns: 3,
     cacheHitRatio: 0.8,
   },

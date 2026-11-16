@@ -331,3 +331,12 @@ test("/router explain shows the decision, scores, costs, and verdict", async () 
   expect(text).toContain("score 0.710")
   expect(text).toContain("cost $0.008000")
 })
+
+test("/router pin-mode saves the selected cache strategy", async () => {
+  environment()
+  const { context, command, setSelect } = fakeContext()
+  tui.setup(context)
+  setSelect("switch")
+  await command().run("pin-mode")
+  expect(readConfig({ write: false }).config.pin.mode).toBe("switch")
+})

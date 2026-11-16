@@ -219,8 +219,12 @@ impl Default for Limits {
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct PinSettings {
+    pub mode: String,
     pub switch_threshold: f64,
     pub idle_ttl_ms: f64,
+    pub max_age_ms: f64,
+    pub max_turns: u32,
+    pub cost_switch_ratio: f64,
     pub flip_flop_turns: usize,
     pub cache_hit_ratio: f64,
 }
@@ -228,8 +232,12 @@ pub struct PinSettings {
 impl Default for PinSettings {
     fn default() -> Self {
         Self {
+            mode: "balanced".to_string(),
             switch_threshold: 0.12,
             idle_ttl_ms: 300_000.0,
+            max_age_ms: 1_800_000.0,
+            max_turns: 8,
+            cost_switch_ratio: 4.0,
             flip_flop_turns: 3,
             cache_hit_ratio: 0.8,
         }
@@ -288,6 +296,7 @@ pub struct Pin {
     pub last_turn_class: String,
     pub last_complexity: u8,
     pub switch_count: u32,
+    pub pinned_turns: u32,
     pub away: Vec<Away>,
     pub source: String,
     pub forced: bool,

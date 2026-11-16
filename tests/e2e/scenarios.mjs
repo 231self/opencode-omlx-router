@@ -301,6 +301,72 @@ export const SCENARIOS = [
   },
 
   {
+    id: "switch-mode",
+    host: "opencode",
+    notes: "pin mode switch takes the best model every turn and accepts cache misses",
+    config: { pin: { mode: "switch" } },
+    steps: [
+      {
+        prompt: CODE_PROMPT,
+        judge: verdict(2),
+        expect: {
+          judgeCalls: 1,
+          decisions: [
+            decision({
+              chosen: FLASH,
+              source: "route",
+              reason: "best-model",
+              stage: "route/cost",
+              policy: "cost",
+              complexity: 2,
+              pinned: false,
+              assistantModel: FLASH,
+            }),
+          ],
+        },
+      },
+      {
+        prompt: CODE_PROMPT,
+        judge: verdict(4),
+        expect: {
+          judgeCalls: 1,
+          decisions: [
+            decision({
+              chosen: PRO,
+              source: "route",
+              reason: "best-model",
+              stage: "route/cost",
+              policy: "cost",
+              complexity: 4,
+              pinned: false,
+              assistantModel: PRO,
+            }),
+          ],
+        },
+      },
+      {
+        prompt: CODE_PROMPT,
+        judge: verdict(2),
+        expect: {
+          judgeCalls: 1,
+          decisions: [
+            decision({
+              chosen: FLASH,
+              source: "route",
+              reason: "best-model",
+              stage: "route/cost",
+              policy: "cost",
+              complexity: 2,
+              pinned: false,
+              assistantModel: FLASH,
+            }),
+          ],
+        },
+      },
+    ],
+  },
+
+  {
     id: "judge-unreachable",
     host: "opencode",
     notes: "a dead judge endpoint falls back to deterministic heuristics",

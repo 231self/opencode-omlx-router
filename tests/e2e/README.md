@@ -69,6 +69,7 @@ failure the workspace is kept and printed; on success it is removed unless
 | `quality-gate` | OpenCode | Quality policy selects the stronger model and applies it same-turn. |
 | `latency-policy` | OpenCode | Latency overrides can beat both price and quality. |
 | `pin-holds` | OpenCode | The incumbent survives a higher-scoring challenger inside the switch threshold. |
+| `switch-mode` | OpenCode | `pin.mode: "switch"` takes the best model every turn and switches back on a simpler follow-up. |
 | `complexity-jump` | OpenCode | A two-step upward jump breaks the pin and escalates. |
 | `judge-unreachable` | OpenCode | A dead judge endpoint falls back to deterministic heuristics. |
 | `judge-malformed` | OpenCode | Unparsable output is retried once, then falls back. |

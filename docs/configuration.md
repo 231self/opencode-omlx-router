@@ -85,8 +85,12 @@ directory and is rediscovered on completion. The admin key is never logged.
 
 | Key | Default | Notes |
 |---|---|---|
+| `mode` | `"balanced"` | `cache` (sticky), `balanced` (default), or `switch` (best every turn) |
 | `switchThreshold` | `0.12` | Keep the incumbent unless the challenger wins by more |
 | `idleTtlMs` | `300000` | Re-route after this much idle time |
+| `maxAgeMs` | `1800000` | Release a pin after 30 minutes even while active |
+| `maxTurns` | `8` | Reconsider a pin after this many turns |
+| `costSwitchRatio` | `4` | Switch when the incumbent costs more than 4× an adequate challenger |
 | `flipFlopTurns` | `3` | Do not switch back to a model used in the last N turns |
 | `cacheHitRatio` | `0.8` | Assumed cache-read share when costing a pinned model |
 

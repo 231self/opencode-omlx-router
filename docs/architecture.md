@@ -79,6 +79,12 @@ is per session.
 
 ## Cache-aware pinning
 
+`pin.mode` selects the trade-off: `cache` keeps the incumbent to reuse its
+provider cache, `balanced` (default) applies a switch threshold plus age/turn/
+cost releases, and `switch` takes the best candidate every turn with cold-cache
+scoring. Provider prompt caches are not portable across models; a switch pays
+one full prefill and the new model may cache its own prefix afterwards.
+
 Naive per-turn switching destroys provider prompt caches. The pin keeps the
 incumbent when it clears gates and the challenger does not beat it by
 `pin.switchThreshold`. Pins break on gate failure, a complexity jump of two or

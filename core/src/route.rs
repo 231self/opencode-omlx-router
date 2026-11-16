@@ -274,7 +274,11 @@ pub fn handle(request: RouteRequest) -> Value {
         settings: &request.settings,
         verdict: &verdict,
         envelope: &envelope,
-        pin: request.pin.as_ref(),
+        pin: if request.settings.pin.mode == "switch" {
+            None
+        } else {
+            request.pin.as_ref()
+        },
         agent: agent.as_ref(),
         parent: request.session.parent_model.as_ref(),
         policy: &policy,

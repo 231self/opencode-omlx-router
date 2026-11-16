@@ -103,6 +103,13 @@ First release.
   idle TTL only switches when a different model is actually best.
 - A rejected `switchModel` call is recorded with `applied: "none"` and the
   error, instead of claiming the decision was applied.
+- Pins now release after `pin.maxTurns` (8) or `pin.maxAgeMs` (30 min) even
+  while active, and a model costing more than `pin.costSwitchRatio` (4×) an
+  adequate challenger no longer stays pinned. The one-time cache miss is
+  cheaper than keeping an overpriced incumbent indefinitely.
+- `pin.mode` adds an explicit choice: `cache` (sticky), `balanced` (default),
+  or `switch` (best every turn, cold-cache scoring). `/router pin-mode` and the
+  Pin mode menu item expose it.
 
 ### Notes
 
