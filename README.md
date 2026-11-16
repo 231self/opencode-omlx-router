@@ -169,7 +169,9 @@ Or edit `~/.config/omlx-router/config.json`:
 An empty `favorites` pool does **not** fall back to all models. That prevents
 zero-cost or unintended models from being selected without your opt-in; set
 `source: "available"` if that is what you want. An unknown source selects
-nothing and reports a warning.
+nothing and reports a warning. The TUI tells you when the pool is empty: at
+startup and in `/router status` it points to `/router pool`, which offers
+**Use my favorites**, **Enter an explicit list**, or **Use all available**.
 
 `pool.include` / `pool.exclude` add or drop globs after the source; `maxModels`
 caps the judge's candidate table; `requireTools` and `minContext` are hard
@@ -463,7 +465,7 @@ the CLI for headless `opencode run`/`serve`, OpenCode Desktop, and Kilo.
 | `/router status` | Compact status: state, judge, pins, timing, last decision |
 | `/router on` / `/router off` | Enable or disable routing |
 | `/router policy` | Interactive picker for `cost` / `quality` / `latency`; clears pins |
-| `/router pool` | Resolved models, config path, and the exact commands to change the pool |
+| `/router pool` | Interactive pool setup: favorites, explicit list, or all available; shows the resolved pool |
 | `/router history [n]` | Recent decisions, including subagents and judge/route time |
 | `/router timing [n]` | Local judge vs remote model vs tool time per turn |
 | `/router explain` | Full trace of this session's last decision |

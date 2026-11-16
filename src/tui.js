@@ -6,7 +6,7 @@ import {
   formatBytes,
   judgeAvailability,
 } from "./provision.js"
-import { resolvePool } from "./pool.js"
+import { readHostModelState, resolvePool } from "./pool.js"
 import {
   clearPin,
   clearPins,
@@ -86,6 +86,143 @@ function poolLines(config, models, providers) {
   lines.push("set models: omlx-router config set pool.source list")
   lines.push(`            omlx-router config set pool.models '["provider/model", "..."]'`)
   return lines.join("\n")
+}
+
+async function poolCatalog(context) {
+  const location = context.location ?? context.data.location.default()
+  try {
+    await Promise.all([
+      context.data.location.model.sync(location),
+      context.data.location.provider.sync(location),
+    ])
+  } catch {
+    // best effort; the cached lists may still be usable
+  }
+  return {
+    models: context.data.location.model.list(location) ?? [],
+    providers: context.data.location.provider.list(location) ?? [],
+  }
+}
+
+async function poolMenu(context) {
+  const { models, providers } = await poolCatalog(context)
+  let config = readConfig({ write: true }).config
+  let resolved = resolvePool({ models, providers, config, host: HOST })
+
+  if (resolved.pool.length > 0) {
+    await show(context, poolLines(config, models, providers))
+    const choice = await context.ui.dialog.select({
+      title: "oMLX Router pool",
+      options: [
+        {
+          title: "Change pool",
+          value: "change",
+          description: "Choose host favorites, an explicit list, or every available model",
+        },
+        { title: "Keep current pool", value: "close", description: "Leave routing unchanged" },
+      ],
+    })
+    if (choice !== "change") return
+  }
+
+  const source = await context.ui.dialog.select({
+    title: resolved.pool.length > 0 ? "oMLX Router pool source" : "No models selected · choose a pool",
+    options: [
+      {
+        title: "Use my favorites",
+        value: "favorites",
+        description: "Favorite models in OpenCode's model picker; routing reads them",
+      },
+      {
+        title: "Enter an explicit list",
+        value: "list",
+        description: "Comma-separated provider/model names",
+      },
+      {
+        title: "Use all available models",
+        value: "available",
+        description: "Explicit opt-in; cost-first may pick zero-cost models",
+      },
+      { title: "Cancel", value: "cancel", description: "Leave the current pool unchanged" },
+    ],
+  })
+  if (!source || source === "cancel") return
+
+  if (source === "favorites") {
+    const favorites = readHostModelState(HOST)
+    saveConfig({ ...config, pool: { ...config.pool, source: "favorites" } })
+    clearPins(HOST)
+    if (favorites.favorite.length === 0) {
+      await show(
+        context,
+        "Pool source is now favorites, but you have not favorited any models yet.\n\n" +
+          "Open OpenCode's model picker and favorite the models you want, then run /router pool again.\n\n" +
+          "Or run /router pool and choose 'Enter an explicit list' to name them directly.",
+      )
+    } else {
+      await context.ui.toast.show({
+        title: "oMLX Router",
+        message: `favorites pool · ${favorites.favorite.length} model(s)`,
+        variant: "success",
+      })
+    }
+    return
+  }
+
+  if (source === "list") {
+    if (!context.ui.dialog.prompt) {
+      await show(context, "This host has no text prompt. Edit pool.models in " + configPath() + ".")
+      return
+    }
+    const text = await context.ui.dialog.prompt({
+      title: "Models for the router",
+      placeholder: "deepseek/deepseek-flash, deepseek/deepseek-v4-pro",
+    })
+    if (!text) return
+    const references = String(text)
+      .split(/[,\s]+/)
+      .map((entry) => entry.trim())
+      .filter(Boolean)
+    if (references.length === 0) {
+      await show(context, "Enter at least one provider/model.")
+      return
+    }
+    const available = new Set(models.map((model) => `${model.providerID}/${model.id ?? model.modelID}`))
+    const missing = references.filter((reference) => !available.has(reference.split("#")[0]))
+    if (missing.length > 0) {
+      await show(
+        context,
+        `Not in the host model catalog: ${missing.join(", ")}\n\n` +
+          `Examples: ${[...available].slice(0, 6).join(", ") || "(none advertised)"}`,
+      )
+      return
+    }
+    saveConfig({ ...config, pool: { ...config.pool, source: "list", models: references } })
+    clearPins(HOST)
+    await context.ui.toast.show({
+      title: "oMLX Router",
+      message: `pool · ${references.length} model(s)`,
+      variant: "success",
+    })
+    return
+  }
+
+  if (source === "available") {
+    const confirmed = await context.ui.dialog.confirm({
+      title: "Use every available model?",
+      message:
+        "This opts into all eligible chat models. Cost-first routing may choose free or zero-cost models.\n\nContinue?",
+      label: { confirm: "Use all", cancel: "Cancel" },
+    })
+    if (!confirmed) return
+    saveConfig({ ...config, pool: { ...config.pool, source: "available" } })
+    clearPins(HOST)
+    await context.ui.toast.show({
+      title: "oMLX Router",
+      message: "pool · all available models",
+      variant: "success",
+    })
+  }
 }
 
 function taskLine(task) {
@@ -298,18 +435,7 @@ async function runCommand(context, input) {
       return
     }
     case "pool": {
-      const location = context.location ?? context.data.location.default()
-      try {
-        await Promise.all([
-          context.data.location.model.sync(location),
-          context.data.location.provider.sync(location),
-        ])
-      } catch {
-        // best effort
-      }
-      const models = context.data.location.model.list(location) ?? []
-      const providers = context.data.location.provider.list(location) ?? []
-      await show(context, poolLines(config, models, providers))
+      await poolMenu(context)
       return
     }
     case "history": {
@@ -477,6 +603,26 @@ export default {
 
   setup(context) {
     const disposers = []
+
+    try {
+      const config = readConfig({ write: false }).config
+      const favorites = readHostModelState(HOST)
+      const noFavorites = config.pool.source === "favorites" && favorites.favorite.length === 0
+      const noList =
+        config.pool.source === "list" &&
+        config.pool.models.length === 0 &&
+        (config.pool.include ?? []).length === 0
+      const noSource = !["favorites", "list", "available"].includes(config.pool.source)
+      if (noFavorites || noList || noSource) {
+        void context.ui.toast.show({
+          title: "oMLX Router",
+          message: "No models selected. Open /router pool to choose favorites or an explicit list.",
+          duration: 8000,
+        })
+      }
+    } catch {
+      // A missing config or toast must not stop the TUI part.
+    }
 
     if (typeof context.data?.on === "function") {
       const refresh = async (event) => {

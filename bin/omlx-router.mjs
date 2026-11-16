@@ -9,6 +9,7 @@ import {
   formatBytes,
   judgeAvailability,
 } from "../src/provision.js"
+import { readHostModelState } from "../src/pool.js"
 import { buildStatus, formatMilliseconds, formatStatus, formatTiming } from "../src/status.js"
 import { readDecisions, readTurns, summariseTurns } from "../src/state.js"
 import { VERSION } from "../src/version.js"
@@ -169,6 +170,13 @@ function poolCommand() {
   if (config.pool.models.length) console.log(`models   ${config.pool.models.join(", ")}`)
   if (config.pool.include.length) console.log(`include  ${config.pool.include.join(", ")}`)
   if (config.pool.exclude.length) console.log(`exclude  ${config.pool.exclude.join(", ")}`)
+  const state = readHostModelState(host)
+  if (config.pool.source === "favorites" && state.favorite.length === 0) {
+    console.log("warning  no favorites; routing pauses until you favorite models or set pool.models")
+  }
+  if (config.pool.source === "list" && config.pool.models.length === 0) {
+    console.log("warning  pool.models is empty; routing pauses until you add models")
+  }
   console.log(`config   ${configPath()}`)
   console.log("set models: omlx-router config set pool.source list")
   console.log(`            omlx-router config set pool.models '["provider/model", "..."]'`)

@@ -99,6 +99,7 @@ export function formatTuiStatus(status) {
     lines.push(
       `last    ${status.last.chosen ?? "unknown"} · ${status.last.stage ?? ""}${status.last.pinned ? " · pinned" : ""}`,
     )
+    if (status.last.hint) lines.push(`hint    ${status.last.hint}`)
   }
   lines.push(`config  ${shortPath(status.configPath)}`)
   if (status.error) lines.push(`warning ${status.error}`)

@@ -307,6 +307,11 @@ export class Router {
     if (log.reason === "disabled" || log.reason === "subagents_disabled") return
     const record = {
       ...log,
+      ...(log.reason === "no_pool"
+        ? {
+            hint: "No models selected. Open /router pool to choose favorites or an explicit list.",
+          }
+        : {}),
       applied: result.action === "decide" ? (extra.switchError ? "none" : this.appliedMode) : "none",
       error: extra.switchError ?? null,
       timing: {

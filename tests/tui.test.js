@@ -11,6 +11,9 @@ function environment() {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "omlx-router-tui-"))
   process.env.OMLX_ROUTER_CONFIG = path.join(dir, "config.json")
   process.env.OMLX_ROUTER_STATE = path.join(dir, "state")
+  const favorites = path.join(dir, "model.json")
+  fs.writeFileSync(favorites, JSON.stringify({ favorite: [], variant: {} }))
+  process.env.OMLX_ROUTER_FAVORITES = favorites
   return { dir }
 }
 
@@ -20,8 +23,21 @@ function fakeContext() {
   const handlers = {}
   const synced = []
   let confirmAnswer = true
+  let promptAnswer = ""
   let selectAnswers = []
   let lastOptions = []
+  const models = [
+    {
+      providerID: "deepseek",
+      id: "deepseek-flash",
+      name: "DeepSeek Flash",
+      type: "chat",
+      cost: [{ input: 0.2, output: 0.8, cache: { read: 0.05, write: 0.2 } }],
+      limit: { context: 262144, output: 131072 },
+      capabilities: { tools: true, input: ["text"], output: ["text"] },
+      status: "active",
+    },
+  ]
   const context = {
     location: { directory: "/tmp" },
     ui: {
@@ -33,6 +49,7 @@ function fakeContext() {
           lastOptions = options ?? []
           return selectAnswers.length ? selectAnswers.shift() : "quality"
         },
+        prompt: async () => promptAnswer,
         confirm: async () => confirmAnswer,
       },
       toast: { show: async ({ title, message }) => messages.push({ kind: "toast", title, message }) },
@@ -54,7 +71,7 @@ function fakeContext() {
         default: () => ({ directory: "/tmp" }),
         model: {
           sync: async () => {},
-          list: () => [],
+          list: () => models,
         },
         provider: {
           sync: async () => {},
@@ -77,6 +94,9 @@ function fakeContext() {
     options: () => lastOptions,
     setSelect: (...answers) => {
       selectAnswers = answers
+    },
+    setPrompt: (value) => {
+      promptAnswer = value
     },
     setConfirm: (value) => {
       confirmAnswer = value
@@ -246,4 +266,25 @@ test("/router opens a navigable menu with descriptions", async () => {
   expect(menu.every((option) => option.description)).toBe(true)
   expect(menu.some((option) => option.title === "Status")).toBe(true)
   expect(messages.some((entry) => String(entry.message).includes("oMLX Router"))).toBe(true)
+})
+
+test("tui instructs when no pool is selected", () => {
+  environment()
+  const { context, messages } = fakeContext()
+  tui.setup(context)
+  expect(
+    messages.some((entry) => String(entry.message).includes("No models selected")),
+  ).toBe(true)
+})
+
+test("/router pool saves an explicit model list", async () => {
+  environment()
+  const { context, command, setSelect, setPrompt } = fakeContext()
+  tui.setup(context)
+  setSelect("list")
+  setPrompt("deepseek/deepseek-flash")
+  await command().run("pool")
+  const config = readConfig({ write: false }).config
+  expect(config.pool.source).toBe("list")
+  expect(config.pool.models).toEqual(["deepseek/deepseek-flash"])
 })

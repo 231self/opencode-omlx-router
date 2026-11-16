@@ -652,6 +652,7 @@ export const SCENARIOS = [
               applied: "none",
               pinned: false,
               judgeUsed: false,
+              hintContains: "/router pool",
               assistantModel: FLASH,
             },
           ],

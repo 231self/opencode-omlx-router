@@ -24,6 +24,9 @@
   host footer lags.
 - `/router` now opens a navigable action menu with descriptions for every item;
   `/router status` is a compact, aligned view instead of a long text blob.
+- `/router pool` is an interactive setup flow for favorites, an explicit model
+  list, or the explicit all-available opt-in. When the pool is empty, a startup
+  toast and the status hint point to it instead of silently routing.
 
 ## 0.1.0 — 2026-11-16
 

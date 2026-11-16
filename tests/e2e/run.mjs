@@ -306,6 +306,9 @@ async function runScenario(scenario, { stub, root, keep, packageRoot }) {
       if (expected.judgeUsed !== undefined) {
         assertEqual(failures, "judge.used", Boolean(record.judge?.used), expected.judgeUsed)
       }
+      if (expected.hintContains && !String(record.hint ?? "").includes(expected.hintContains)) {
+        failures.push(`hint: expected to contain ${JSON.stringify(expected.hintContains)}, got ${JSON.stringify(record.hint)}`)
+      }
       if (expected.verdict) {
         if (!record.verdict) {
           failures.push("decision is missing the effective verdict")

@@ -372,3 +372,40 @@ test("prompt write preserves context state written while routing", async () => {
   expect(pin.model.id).toBe("deepseek-flash")
   expect(pin.lastContextTokens).toBe(123)
 })
+
+test("no-pool decisions carry an actionable onboarding hint", async () => {
+  const env = tempEnv()
+  const core = {
+    route: () => ({
+      action: "skip",
+      reason: "no_pool",
+      log: {
+        ts: Date.now(),
+        host: "opencode",
+        role: "root",
+        agent: "build",
+        session: "hash",
+        kind: "primary",
+        stage: "skip/no_pool",
+        reason: "no_pool",
+        poolSize: 0,
+        chosen: null,
+        pinned: false,
+        source: "skip",
+        judge: { used: false, cached: false, confidence: 0 },
+        top: [],
+        applied: "none",
+        error: null,
+        turnClass: "agentic",
+        complexity: 2,
+        policy: "cost",
+      },
+      state: { decisions: 0, switches: 0 },
+    }),
+  }
+  const { router } = harness({ env, sessionModel: null, core })
+  await router.prompt({ sessionID: "ses_1", prompt: { text: "implement it", files: [] } })
+  const [decision] = readDecisions("opencode", 1, env)
+  expect(decision.reason).toBe("no_pool")
+  expect(decision.hint).toContain("/router pool")
+})
