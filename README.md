@@ -5,6 +5,8 @@ Per-turn model routing for [OpenCode V2](https://opencode.ai) and
 [oMLX](https://github.com/jundot/omlx), with a context optimiser that keeps each
 turn inside the chosen model's budget.
 
+> **npm package:** [`@231self/opencode-omlx-router`](https://www.npmjs.com/package/@231self/opencode-omlx-router)
+>
 > **Status: v0.1.0.** Routing, the context optimiser, subagent policy, the TUI
 > `/router` surface, per-turn timing, the CLI, and the Kilo shim are implemented
 > and tested. Design of record:
@@ -80,28 +82,28 @@ Release/build details: [docs/releasing.md](docs/releasing.md).
 ### OpenCode V2
 
 ```sh
-opencode plugin add opencode-omlx-router
+opencode plugin add @231self/opencode-omlx-router
 ```
 
 ```jsonc
 // ~/.config/opencode/opencode.jsonc
 {
   "$schema": "https://opencode.ai/config.json",
-  "plugins": ["opencode-omlx-router"]
+  "plugins": ["@231self/opencode-omlx-router"]
 }
 ```
 
 ### Kilo
 
 ```sh
-kilo plugin opencode-omlx-router
+kilo plugin @231self/opencode-omlx-router
 ```
 
 ```jsonc
 // ~/.config/kilo/kilo.jsonc or project kilo.jsonc
 {
   "$schema": "https://app.kilo.ai/config.json",
-  "plugin": ["opencode-omlx-router"]
+  "plugin": ["@231self/opencode-omlx-router"]
 }
 ```
 

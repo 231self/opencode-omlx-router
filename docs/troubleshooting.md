@@ -10,7 +10,7 @@
 | Model switching is slow/ignored in Kilo | decision log `applied: "boundary"` | Expected: Kilo's V1 API applies the switch at the next turn |
 | Context overflow | decision log, `lastOptimiser.overflow` | The pin is cleared and host compaction runs; raise the pool context floor or lower `reserveOutputTokens` |
 | Config edits do nothing | `~/.config/omlx-router/config.json` | The file wins after first run; plugin options only seed it |
-| `opencode-omlx-router` loads but no decisions | `bun run build:wasm` | The package must contain `dist/core.wasm`; rebuilding from source requires cargo |
+| `@231self/opencode-omlx-router` loads but no decisions | `bun run build:wasm` | The package must contain `dist/core.wasm`; rebuilding from source requires cargo |
 | Tool failures never escalate | tool hook registration | V2 supports `execute.after`; Kilo's V1 hook exposes errors only when the host reports them |
 | TUI `/router` missing | OpenCode TUI, not headless | Use `omlx-router` CLI for `opencode run`, Desktop, or Kilo |
 | Judge download says "admin login failed" | Missing/wrong main key | Set `judge.provision.adminApiKey`/`OMLX_ADMIN_API_KEY`; sub-keys cannot download |

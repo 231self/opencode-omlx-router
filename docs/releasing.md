@@ -8,7 +8,7 @@
 | Rust | stable, 1.98 tested | Core |
 | `wasm32-unknown-unknown` target | — | Core build |
 | binaryen (`wasm-opt`) | optional | Size optimisation; CI installs it |
-| npm account | — | Publish rights for `opencode-omlx-router` |
+| npm account | — | Publish rights for `@231self/opencode-omlx-router` |
 | `gh` | authenticated | Release/tag |
 
 ```sh
@@ -49,13 +49,13 @@ Artifacts:
 
 ## Publish to npm
 
-The release is `opencode-omlx-router@0.1.0` (2026-11-16).
+The release is `@231self/opencode-omlx-router@0.1.0` (2026-11-16).
 
 ```sh
 npm login                       # or set NPM_TOKEN for CI publishing
 npm whoami
 npm publish --access public     # runs prepack -> build:wasm
-npm view opencode-omlx-router version
+npm view @231self/opencode-omlx-router version
 ```
 
 2FA: use an automation token or answer the OTP prompt interactively. Never
@@ -79,8 +79,8 @@ gate.
 
 ```sh
 mkdir -p /tmp/omlx-verify && cd /tmp/omlx-verify
-npm pack opencode-omlx-router
-tar -tzf opencode-omlx-router-0.1.0.tgz | head
+npm pack @231self/opencode-omlx-router
+tar -tzf 231self-opencode-omlx-router-0.1.0.tgz | head
 ```
 
 Then install it as a consumer (below) in a scratch project and confirm a
@@ -88,9 +88,9 @@ decision is logged in `~/.local/state/omlx-router/opencode/decisions.jsonl`.
 The prompt harness can drive the installed package directly:
 
 ```sh
-npm install ./opencode-omlx-router-0.1.0.tgz
-bun tests/e2e/run.mjs --only judge-cost --package "$PWD/node_modules/opencode-omlx-router"
-bun tests/e2e/run.mjs --only kilo-boundary --package "$PWD/node_modules/opencode-omlx-router"
+npm install ./231self-opencode-omlx-router-0.1.0.tgz
+bun tests/e2e/run.mjs --only judge-cost --package "$PWD/node_modules/@231self/opencode-omlx-router"
+bun tests/e2e/run.mjs --only kilo-boundary --package "$PWD/node_modules/@231self/opencode-omlx-router"
 ```
 
 ## Consumer install (after publish)
@@ -98,7 +98,7 @@ bun tests/e2e/run.mjs --only kilo-boundary --package "$PWD/node_modules/opencode
 ### OpenCode V2
 
 ```sh
-opencode plugin add opencode-omlx-router
+opencode plugin add @231self/opencode-omlx-router
 ```
 
 or in `~/.config/opencode/opencode.jsonc`:
@@ -106,7 +106,7 @@ or in `~/.config/opencode/opencode.jsonc`:
 ```jsonc
 {
   "$schema": "https://opencode.ai/config.json",
-  "plugins": ["opencode-omlx-router"]
+  "plugins": ["@231self/opencode-omlx-router"]
 }
 ```
 
@@ -116,7 +116,7 @@ Then in the TUI: `/router` for status, `/router judge` to test the judge,
 ### Kilo
 
 ```sh
-kilo plugin opencode-omlx-router
+kilo plugin @231self/opencode-omlx-router
 ```
 
 or in `~/.config/kilo/kilo.jsonc` / project `kilo.jsonc`:
@@ -124,7 +124,7 @@ or in `~/.config/kilo/kilo.jsonc` / project `kilo.jsonc`:
 ```jsonc
 {
   "$schema": "https://app.kilo.ai/config.json",
-  "plugin": ["opencode-omlx-router"]
+  "plugin": ["@231self/opencode-omlx-router"]
 }
 ```
 
@@ -155,14 +155,14 @@ Kilo config:
 ## Post-release
 
 - `gh repo edit 231self/opencode-omlx-router --add-topic ...`
-- Watch `gh run list` and `npm view opencode-omlx-router`.
-- If a bad release ships within 72 h: `npm unpublish opencode-omlx-router@x.y.z`
+- Watch `gh run list` and `npm view @231self/opencode-omlx-router`.
+- If a bad release ships within 72 h: `npm unpublish @231self/opencode-omlx-router@x.y.z`
   (avoid if possible; prefer `npm deprecate` and a patch).
 - Never reuse a published version.
 
 ## Rollback/disable for users
 
-- Disable the plugin: `opencode plugin remove opencode-omlx-router` or set
+- Disable the plugin: `opencode plugin remove @231self/opencode-omlx-router` or set
   `"enabled": false` in `~/.config/omlx-router/config.json`.
 - The plugin never modifies host files; removing it leaves only config/state
   under `~/.config/omlx-router` and `~/.local/state/omlx-router`.

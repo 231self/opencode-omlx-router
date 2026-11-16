@@ -1,5 +1,5 @@
 {
-  "name": "opencode-omlx-router",
+  "name": "@231self/opencode-omlx-router",
   "version": "0.1.0",
   "description": "Per-turn model routing for OpenCode V2 and Kilo, decided by a small oMLX-served model, with a WASM routing core and context optimiser.",
   "type": "module",
@@ -18,7 +18,7 @@
     "./tui": "./src/tui.js"
   },
   "bin": {
-    "omlx-router": "./bin/omlx-router.mjs"
+    "omlx-router": "bin/omlx-router.mjs"
   },
   "files": [
     "src",

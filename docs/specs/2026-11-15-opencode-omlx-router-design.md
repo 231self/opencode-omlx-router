@@ -621,7 +621,7 @@ retention, average pruning, and per-agent breakdown.
 
 ## 17. Packaging and repository
 
-- `package.json`: name `opencode-omlx-router`, version `0.1.0`, `type: module`,
+- `package.json`: name `@231self/opencode-omlx-router`, version `0.1.0`, `type: module`,
   `exports { ".": "./src/index.js", "./tui": "./src/tui.js" }`,
   `bin { "omlx-router": "./bin/omlx-router.mjs" }`,
   `files ["src", "dist/core.wasm", "bin", "README.md", "LICENSE"]`,
@@ -631,8 +631,8 @@ retention, average pruning, and per-agent breakdown.
 - `dist/core.wasm` is committed for git installs; `prepack` rebuilds it; CI
   smoke-tests it and enforces the size gate (byte-for-byte reproducibility is
   not promised).
-- Install: `opencode plugin add opencode-omlx-router` (or a `plugins` entry),
-  `kilo plugin opencode-omlx-router`; local development via a `plugins` path
+- Install: `opencode plugin add @231self/opencode-omlx-router` (or a `plugins` entry),
+  `kilo plugin @231self/opencode-omlx-router`; local development via a `plugins` path
   entry after `bun run build:wasm`.
 - Repository: jj colocated with git, bookmark `main`, public, org `231self`,
   topics `opencode`, `kilo`, `plugin`, `llm-router`, `omlx`, `mlx`, `wasm`.
