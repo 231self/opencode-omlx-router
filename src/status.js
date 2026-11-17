@@ -94,7 +94,7 @@ export function formatTuiStatus(status) {
     `OpenCode Router ${status.version} · ${status.host}`,
     `state   ${status.enabled ? "enabled" : "disabled"} · policy ${status.policy} · pool ${status.pool}`,
     `judge   ${status.judge.enabled ? status.judge.model : "disabled"} · ${shortHost(status.judge.baseURL)}`,
-    `pins    ${status.pins}${status.pinModels.length ? ` · ${status.pinModels.map(modelLabel).join(", ")}` : ""}`,
+    `pins    ${status.pins} sessions${status.pinModels.length ? ` · ${status.pinModels.map(modelLabel).join(", ")}` : ""}`,
   ]
   if (status.timing?.count) {
     const average = status.timing.averages
@@ -138,7 +138,7 @@ export function formatStatus(status) {
     `config     ${status.configPath}${status.configExists ? "" : " (not created yet)"}`,
     `state dir  ${status.stateDir}`,
     `judge      ${status.judge.enabled ? status.judge.model : "disabled"} · ${status.judge.baseURL}`,
-    `pins       ${status.pins}${status.pinModels.length ? ` (${status.pinModels.map(modelLabel).join(", ")})` : ""}`,
+    `pins       ${status.pins} sessions${status.pinModels.length ? ` (${status.pinModels.map(modelLabel).join(", ")})` : ""}`,
     `core       ${status.core?.abi ? `ABI ${status.core.abi}` : "not loaded"}`,
     `last       ${status.last ? `${status.last.chosen ?? "unknown"} · ${status.last.stage ?? ""} · ${status.last.pinned ? "pinned" : "switched"}` : "none"}`,
   ]

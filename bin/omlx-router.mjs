@@ -20,7 +20,7 @@ import {
   refreshQuality,
 } from "../src/quality.js"
 import { buildStatus, formatMilliseconds, formatStatus, formatTiming } from "../src/status.js"
-import { readDecisions, readTurns, summariseTurns } from "../src/state.js"
+import { clearPins, listPins, readDecisions, readTurns, summariseTurns } from "../src/state.js"
 import { ABI_VERSION, VERSION } from "../src/version.js"
 import { loadCore } from "../src/wasm.js"
 import { collectDebug, formatDebug } from "../src/debug.js"
@@ -57,6 +57,7 @@ Usage:
   opencode-model-router timing [n] [--json]
   opencode-model-router pool
   opencode-model-router quality [status|refresh]
+  opencode-model-router pins [clear] [--yes]
   opencode-model-router doctor
   opencode-model-router debug [--json]
   opencode-model-router judge pull [repo] [--yes]
@@ -145,6 +146,41 @@ function historyCommand() {
         record.pinned ? "pinned " : "switched"
       } ${record.stage ?? ""}  judge ${formatMilliseconds(timing.judgeMs ?? record.judge?.ms ?? 0)} route ${formatMilliseconds(timing.routeMs ?? 0)}`,
     )
+  }
+}
+
+function modelRefLabel(reference) {
+  if (!reference) return "none"
+  return `${reference.providerID}/${reference.id ?? reference.modelID}${reference.variant ? `#${reference.variant}` : ""}`
+}
+
+function pinsCommand() {
+  const pins = listPins(host)
+  if (rest[0] === "clear") {
+    if (pins.length === 0) {
+      console.log("no routing pins")
+      return
+    }
+    if (!assumeYes) {
+      console.log(`clear ${pins.length} pins with: opencode-model-router pins clear --yes`)
+      return
+    }
+    clearPins(host)
+    console.log(`cleared ${pins.length} pins`)
+    return
+  }
+  if (pins.length === 0) {
+    console.log("no routing pins")
+    return
+  }
+  const sorted = [...pins].sort(
+    (left, right) => (Number(right.lastTurnAt) || 0) - (Number(left.lastTurnAt) || 0),
+  )
+  console.log(`${pins.length} sessions with routing state`)
+  for (const pin of sorted) {
+    const when = Number(pin.lastTurnAt) || Number(pin.since) || 0
+    const age = when ? `${Math.max(0, Math.round((Date.now() - when) / 60000))}m` : "?"
+    console.log(`${modelRefLabel(pin.model).padEnd(42)} ${pin.forced ? "manual" : "auto"}  ${age} old`)
   }
 }
 
@@ -431,6 +467,9 @@ try {
       break
     case "quality":
       await qualityCommand()
+      break
+    case "pins":
+      pinsCommand()
       break
     case "debug":
       await debugCommand()

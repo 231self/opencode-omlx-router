@@ -736,6 +736,7 @@ the CLI for headless `opencode run`/`serve`, OpenCode Desktop, and Kilo.
 | `/router pin-mode` | Interactive picker for `cache` / `balanced` / `switch` |
 | `/router pool` | Interactive pool setup: favorites, explicit list, or all available; shows context, cost, and quality per model |
 | `/router pricing` | Input, output, and cache-read prices per pool model |
+| `/router pins [clear]` | Sessions with automatic routing state; list or clear |
 | `/router history [n]` | Recent decisions, including subagents and judge/route time |
 | `/router timing [n]` | Local judge vs remote model vs tool time per turn |
 | `/router explain` | Readable why: chosen model, policy, verdict, top scores, and per-turn costs |

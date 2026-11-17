@@ -6,6 +6,8 @@
 
 - `/router pricing` shows input, output, and cache-read prices for each pool
   model, with local models marked free.
+- `/router pins` lists the automatic per-session routing state, marks manual
+  pins, and can clear all pins. Status now says "sessions" next to the count.
 
 ### Changed
 

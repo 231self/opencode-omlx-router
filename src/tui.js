@@ -20,6 +20,7 @@ import {
 import {
   clearPin,
   clearPins,
+  listPins,
   readDecisions,
   readTurns,
   sessionHash,
@@ -64,6 +65,16 @@ function parseModel(text) {
   const id = rest.join("/")
   if (!providerID || !id) return null
   return { providerID, id, variant: variant ?? "default" }
+}
+
+function pinLines(pins) {
+  const now = Date.now()
+  return [...pins]
+    .sort((left, right) => (Number(right.lastTurnAt) || 0) - (Number(left.lastTurnAt) || 0))
+    .map((pin) => {
+      const age = formatAge(now - (Number(pin.lastTurnAt) || Number(pin.since) || now))
+      return `${modelLabel(pin.model)} · ${pin.forced ? "manual" : "auto"} · ${age} old`
+    })
 }
 
 function modelLabel(reference) {
@@ -492,6 +503,7 @@ async function openMenu(context) {
         { title: "Pin mode", value: "pin-mode", description: "Cache, balanced, or switch every turn" },
         { title: "Pool", value: "pool", description: "Models available to the router and how to edit them" },
         { title: "Pricing", value: "pricing", description: "Input/output/cache prices for the pool" },
+        { title: "Pins", value: "pins", description: "Sessions with automatic routing state; list or clear" },
         { title: "Quality scores", value: "quality", description: "LMArena score source, cache age, and refresh" },
         { title: "Timing", value: "timing", description: "Local judge vs remote model vs tool time" },
         { title: "History", value: "history", description: "Recent per-turn decisions, including subagents" },
@@ -643,6 +655,37 @@ async function runCommand(context, input) {
     case "pricing": {
       const { models, providers } = await poolCatalog(context)
       await show(context, pricingLines(config, models, providers))
+      return
+    }
+    case "pins": {
+      const pins = listPins(HOST)
+      if (rest[0] === "clear") {
+        if (pins.length === 0) {
+          await show(context, "no routing pins")
+          return
+        }
+        const confirmed = await context.ui.dialog.confirm({
+          title: "Clear routing pins?",
+          message: `Clear ${pins.length} session pins? Each session re-routes on its next turn.`,
+          label: { confirm: "Clear", cancel: "Cancel" },
+        })
+        if (!confirmed) return
+        clearPins(HOST)
+        await context.ui.toast.show({
+          title: "OpenCode Router",
+          message: `${pins.length} pins cleared`,
+          variant: "success",
+        })
+        return
+      }
+      if (pins.length === 0) {
+        await show(context, "no routing pins")
+        return
+      }
+      const lines = pinLines(pins).slice(0, 20)
+      if (pins.length > lines.length) lines.push(`… ${pins.length - lines.length} more`)
+      lines.push("", "clear all: /router pins clear")
+      await show(context, [`${pins.length} sessions with routing state`, "", ...lines].join("\n"))
       return
     }
     case "quality": {
@@ -824,6 +867,7 @@ async function runCommand(context, input) {
           "/router pin-mode [cache|balanced|switch]",
           "/router pool",
           "/router quality [refresh]",
+          "/router pins [clear]",
           "/router history [n]",
           "/router timing [n]",
           "/router explain",

@@ -6,7 +6,7 @@ import path from "node:path"
 import tui from "../src/tui.js"
 import { readConfig, saveConfig } from "../src/config.js"
 import { writeQualityCache } from "../src/quality.js"
-import { appendDecision, appendTurn, sessionHash } from "../src/state.js"
+import { appendDecision, appendTurn, listPins, sessionHash, writePin } from "../src/state.js"
 
 function environment() {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "omlx-router-tui-"))
@@ -134,6 +134,25 @@ test("/router status renders a dialog", async () => {
   const alert = messages.find((entry) => entry.kind === "alert")
   expect(alert.message).toContain("OpenCode Router")
   expect(alert.message).toContain("policy")
+})
+
+test("/router pins lists automatic routing state and can clear it", async () => {
+  environment()
+  writePin("opencode", "ses_pin", {
+    model: { providerID: "deepseek", id: "deepseek-flash", variant: "default" },
+    forced: false,
+    source: "judge",
+    since: Date.now() - 60_000,
+    lastTurnAt: Date.now() - 60_000,
+  })
+  const { context, messages, command } = fakeContext()
+  tui.setup(context)
+  await command().run("pins")
+  const alert = messages.find((entry) => entry.kind === "alert")
+  expect(alert.message).toContain("deepseek/deepseek-flash")
+  expect(alert.message).toContain("auto")
+  await command().run("pins clear")
+  expect(listPins("opencode").length).toBe(0)
 })
 
 test("/router pricing lists per-model token prices", async () => {
