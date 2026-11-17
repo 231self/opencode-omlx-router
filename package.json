@@ -53,6 +53,7 @@
     "test:e2e:list": "bun tests/e2e/run.mjs --list",
     "judge:calibrate": "bun tests/judge-calibration.mjs",
     "routing:eval": "bun tests/routing-eval.mjs",
-    "bench": "bun tests/benchmark.mjs"
+    "bench": "bun tests/benchmark.mjs",
+    "bench:long": "bun tests/benchmark.mjs --long"
   }
 }

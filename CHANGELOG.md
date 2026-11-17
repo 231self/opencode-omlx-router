@@ -17,7 +17,8 @@
   `failover`; the blocklist shows in `/router debug`.
 - `bun run bench`: a deterministic routing and cost benchmark over a ten-turn
   session, comparing fixed models, a simulated tier baseline, and the router in
-  `balanced` and `switch` modes. Results live in `docs/benchmarks/`.
+  `cache`, `balanced`, and `switch` modes. `bun run bench:long` repeats it from
+  12k to 208k context. Results live in `docs/benchmarks/`.
 - `/router version` and `omlx-router version --json`: router version, host, ABI,
   and wasm path for scripts and bug reports.
 - `/router debug` and `omlx-router debug [--json]`: read-only diagnostics with a

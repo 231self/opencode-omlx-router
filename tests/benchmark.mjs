@@ -2,10 +2,10 @@
 /**
  * Reproducible routing benchmark.
  *
- * Simulates a ten-turn coding session and compares:
+ * Simulates a coding session and compares:
  *   - a fixed cheap, mid, and frontier model,
  *   - a static complexity-tier baseline (simulated category baseline),
- *   - this router in `balanced` and `switch` pin modes.
+ *   - this router in cache, balanced, switch, and mixed-weight modes.
  *
  * Decisions come from the real WASM core with recorded (oracle) verdicts, so
  * runs are deterministic. Costs are modelled from published per-million-token
@@ -13,6 +13,7 @@
  *
  * Usage:
  *   bun tests/benchmark.mjs
+ *   bun tests/benchmark.mjs --long
  *   bun tests/benchmark.mjs --json
  *   bun tests/benchmark.mjs --write
  */
@@ -23,9 +24,25 @@ import path from "node:path"
 import { DEFAULT_CONFIG, mergeConfig } from "../src/config.js"
 import { loadCore } from "../src/wasm.js"
 
-const TURNS = 10
 const OUTPUT_TOKENS = 800
 const CACHE_HIT_RATIO = 0.8
+
+const SUITES = {
+  short: {
+    name: "short",
+    title: "Routing benchmark",
+    file: "2026-11-17-routing.md",
+    turns: 10,
+    tokensAt: (turn) => 4000 + 3000 * turn,
+  },
+  long: {
+    name: "long",
+    title: "Long-session routing benchmark",
+    file: "2026-11-17-routing-long.md",
+    turns: 24,
+    tokensAt: (turn) => 12500 + 8500 * (turn - 1),
+  },
+}
 
 const MODELS = {
   cheap: {
@@ -124,13 +141,24 @@ const CASES = [
     prompt: "What does this flag do?",
     truth: { task: "trivial", complexity: 1, needsTools: false, needsVision: false, contextNeed: "small", reasoningNeed: "low", confidence: 0.9 },
   },
+  {
+    id: "error-trace",
+    prompt: "panic: index out of bounds in src/lexer.rs. Find the faulty read and add a regression test.",
+    truth: { task: "debug", complexity: 4, needsTools: true, needsVision: false, contextNeed: "small", reasoningNeed: "high", confidence: 0.9 },
+  },
+  {
+    id: "docs",
+    prompt: "Update the README install section for the new plugin command and check the links.",
+    truth: { task: "edit", complexity: 2, needsTools: true, needsVision: false, contextNeed: "small", reasoningNeed: "low", confidence: 0.9 },
+  },
 ]
 
 function parseArgs(argv) {
-  const options = { json: false, write: false }
+  const options = { json: false, write: false, long: false }
   for (const arg of argv) {
     if (arg === "--json") options.json = true
     else if (arg === "--write") options.write = true
+    else if (arg === "--long") options.long = true
     else if (arg === "--help" || arg === "-h") options.help = true
     else throw new Error(`unknown argument: ${arg}`)
   }
@@ -143,10 +171,6 @@ function label(model) {
 
 function modelKey(reference) {
   return reference ? `${reference.providerID}/${reference.id ?? reference.modelID}` : null
-}
-
-function tokensForTurn(turn) {
-  return 4000 + 3000 * turn
 }
 
 function requiredQuality(verdict) {
@@ -192,36 +216,41 @@ function settings({ mode = "balanced", policy = "cost" } = {}) {
   })
 }
 
-function fixedScenario(model) {
+function caseAt(suite, turn) {
+  return CASES[(turn - 1) % CASES.length]
+}
+
+function fixedScenario(model, suite) {
   let cost = 0
   let passed = 0
   let previousTokens = 0
-  for (let turn = 1; turn <= TURNS; turn += 1) {
-    const verdict = CASES[(turn - 1) % CASES.length].truth
-    const tokens = tokensForTurn(turn)
+  for (let turn = 1; turn <= suite.turns; turn += 1) {
+    const testCase = caseAt(suite, turn)
+    const tokens = suite.tokensAt(turn)
     cost += turnCost(model, tokens, previousTokens)
-    if (passes(model, verdict)) passed += 1
+    if (passes(model, testCase.truth)) passed += 1
     previousTokens = tokens
   }
   return {
     name: `fixed ${label(model)}`,
     qualityPass: passed,
-    turns: TURNS,
+    turns: suite.turns,
     switches: 0,
     cost,
   }
 }
 
-function staticTierScenario() {
+function staticTierScenario(suite) {
   let cost = 0
   let passed = 0
   let previousTokens = 0
   let previousModel = null
   let switches = 0
-  for (let turn = 1; turn <= TURNS; turn += 1) {
-    const verdict = CASES[(turn - 1) % CASES.length].truth
+  for (let turn = 1; turn <= suite.turns; turn += 1) {
+    const testCase = caseAt(suite, turn)
+    const verdict = testCase.truth
     const model = verdict.complexity >= 4 ? MODELS.frontier : verdict.complexity === 3 ? MODELS.mid : MODELS.cheap
-    const tokens = tokensForTurn(turn)
+    const tokens = suite.tokensAt(turn)
     cost += turnCost(model, tokens, previousModel === model ? previousTokens : 0)
     if (passes(model, verdict)) passed += 1
     if (previousModel && previousModel !== model) switches += 1
@@ -231,13 +260,13 @@ function staticTierScenario() {
   return {
     name: "static complexity tiers (simulated)",
     qualityPass: passed,
-    turns: TURNS,
+    turns: suite.turns,
     switches,
     cost,
   }
 }
 
-async function routerScenario(core, mode, { overrides = {}, name = `router ${mode}` } = {}) {
+async function routerScenario(core, mode, { suite, overrides = {}, name = `router ${mode}` } = {}) {
   const config = mergeConfig(settings({ mode }), overrides)
   let pin = null
   let current = null
@@ -247,9 +276,9 @@ async function routerScenario(core, mode, { overrides = {}, name = `router ${mod
   let switches = 0
   const choices = []
 
-  for (let turn = 1; turn <= TURNS; turn += 1) {
-    const testCase = CASES[(turn - 1) % CASES.length]
-    const tokens = tokensForTurn(turn)
+  for (let turn = 1; turn <= suite.turns; turn += 1) {
+    const testCase = caseAt(suite, turn)
+    const tokens = suite.tokensAt(turn)
     const result = core.route({
       abi: 1,
       nowMs: turn * 1000,
@@ -295,7 +324,7 @@ async function routerScenario(core, mode, { overrides = {}, name = `router ${mod
   return {
     name,
     qualityPass: passed,
-    turns: TURNS,
+    turns: suite.turns,
     switches,
     cost,
     choices,
@@ -306,23 +335,47 @@ function money(value) {
   return `$${Number(value).toFixed(3)}`
 }
 
-function markdown(results) {
-  const frontier = results.find((row) => row.name === "fixed anthropic/claude-fable-5-2")
+function markdown(results, suite) {
+  const byName = Object.fromEntries(results.map((row) => [row.name, row]))
+  const frontier = byName["fixed anthropic/claude-fable-5-2"]
+  const cheap = byName["fixed deepseek/deepseek-flash"]
+  const mid = byName["fixed deepseek/deepseek-v4-pro"]
+  const switchRow = byName["router switch"]
+  const balanced = byName["router balanced"]
+  const cache = byName["router cache"]
+  const mixed = byName["router mixed (balanced)"]
+  const first = suite.tokensAt(1)
+  const last = suite.tokensAt(suite.turns)
+  const delta = (row) => ((row.cost - frontier.cost) / frontier.cost) * 100
   const rows = results.map((row) => {
-    const delta = frontier && frontier.cost > 0 ? ((row.cost - frontier.cost) / frontier.cost) * 100 : 0
-    return `| ${row.name} | ${row.qualityPass}/${row.turns} | ${row.switches} | ${money(row.cost)} | ${delta >= 0 ? "+" : ""}${delta.toFixed(0)}% |`
+    const diff = delta(row)
+    return `| ${row.name} | ${row.qualityPass}/${row.turns} | ${row.switches} | ${money(row.cost)} | ${diff >= 0 ? "+" : ""}${diff.toFixed(0)}% |`
   })
+  const passage = (row) => `${row.qualityPass}/${row.turns}`
+
+  const bullets = [
+    `- Fixed cheap passes ${passage(cheap)} turns, fixed mid ${passage(mid)}, and`,
+    `  fixed frontier ${passage(frontier)}.`,
+    `- \`switch\` costs ${money(switchRow.cost)} (${delta(switchRow) >= 0 ? "+" : "−"}${Math.abs(delta(switchRow)).toFixed(0)}% vs frontier) at ${passage(switchRow)} quality.`,
+    `- \`balanced\` costs ${money(balanced.cost)} at ${passage(balanced)} quality, with ${balanced.switches} switches.`,
+    `- \`cache\` costs ${money(cache.cost)} at ${passage(cache)} quality, with ${cache.switches} switches.`,
+    `- \`mixed\` costs ${money(mixed.cost)} at ${passage(mixed)} quality, with ${mixed.switches} switches.`,
+    switchRow.cost > balanced.cost
+      ? `- The pin wins at this context size: switch pays ${money(switchRow.cost - balanced.cost)} more than balanced. Several cold prefills at ${Math.round(first / 1000)}k–${Math.round(last / 1000)}k tokens cost more than keeping the incumbent cached.`
+      : `- Switching wins at this context size: switch saves ${money(balanced.cost - switchRow.cost)} against balanced. The cold prefill is cheaper than the incumbent's output price.`,
+  ]
+
   return [
-    "# Routing benchmark — 2026-11-17",
+    `# ${suite.title} — 2026-11-17`,
     "",
-    "Generated by `bun run bench`. Decisions come from the real WASM core with",
-    "recorded verdicts; costs are modelled from published per-million-token",
-    "prices.",
+    "Generated by `bun run bench`" + (suite.name === "long" ? " `--long`" : "") + ".",
+    "Decisions come from the real WASM core with recorded verdicts; costs are",
+    "modelled from published per-million-token prices.",
     "",
     "## Setup",
     "",
-    `- ${TURNS} turns, cycling ${CASES.length} prompts from the routing eval.`,
-    "- Context grows from 7k to 34k input tokens; 800 output tokens per turn.",
+    `- ${suite.turns} turns, cycling ${CASES.length} prompts from the routing eval.`,
+    `- Context grows from ${Math.round(first / 1000)}k to ${Math.round(last / 1000)}k input tokens; ${OUTPUT_TOKENS} output tokens per turn.`,
     "- Prices per million tokens: cheap 0.2/0.8, mid 2/8, frontier 8/40.",
     "- Cache assumption: 80% of the stable prefix is read from cache on turns",
     "  that keep the same model; a switch pays a cold prefill.",
@@ -331,7 +384,7 @@ function markdown(results) {
     "",
     "## Results",
     "",
-    "| Scenario | Quality pass | Switches | Cost (10 turns) | vs frontier |",
+    "| Scenario | Quality pass | Switches | Cost | vs frontier |",
     "|---|---:|---:|---:|---:|",
     ...rows,
     "",
@@ -342,35 +395,17 @@ function markdown(results) {
     "  the model actually solved the task.",
     "- The static tier baseline is simulated from verdict complexity. It is a",
     "  category baseline, not a run of another plugin.",
-    "- Ollama/llama.cpp judge latency is not included; the judge is a side call",
-    "  and adds no tokens to the conversation.",
+    "- Judge latency is not included; the judge is a side call and adds no tokens",
+    "  to the conversation.",
     "",
     "## Reading the numbers",
     "",
-    "- The fixed cheap and mid models each miss 4/10 turns on required quality;",
-    "  the frontier model and both router modes pass every turn.",
-    "- `switch` has no pin, so it takes Flash or Pro whenever they clear the bar.",
-    "  The cold prefill is cheaper than a frontier turn at $40/M output.",
-    "- `balanced` keeps Fable from turn 3 onward. Turn 6 shows why: the best",
-    "  unblocked alternative was Pro, which scored 0.59 against Fable's 0.50 — a",
-    "  0.09 gain, under the 0.12 switch threshold. Flash would have cost $0.006",
-    "  against Fable's $0.112, but the flip-flop guard excluded it after earlier",
-    "  use. The cost check compares Fable with Pro, and 0.112 is 1.9x 0.059, under",
-    "  the 4x release ratio.",
-    "- That gap is a tuning question. `switchThreshold`, `costSwitchRatio`, and",
-    "  `flipFlopTurns` decide how long an expensive incumbent stays. Short",
-    "  sessions favour `switch`; long sessions with a large stable prefix can",
-    "  favour `cache` or `balanced`.",
-    "- `mixed` weights (0.6 / 0.35 / 0.05, with quality-heavy planning and review)",
-    "  also land at $0.827. The weights change scores, and the pin still clears the",
-    "  0.12 threshold by the same margin. Weights express preference; the pin",
-    "  settings set the cost.",
+    ...bullets,
     "",
     "## Reproduce",
     "",
     "```sh",
-    "bun run bench          # print the table",
-    "bun run bench --json   # machine-readable output",
+    suite.name === "long" ? "bun run bench:long" : "bun run bench",
     "```",
     "",
   ].join("\n")
@@ -379,19 +414,22 @@ function markdown(results) {
 async function main() {
   const options = parseArgs(process.argv.slice(2))
   if (options.help) {
-    console.log("Usage: bun tests/benchmark.mjs [--json] [--write]")
+    console.log("Usage: bun tests/benchmark.mjs [--long] [--json] [--write]")
     return 0
   }
 
+  const suite = options.long ? SUITES.long : SUITES.short
   const core = await loadCore()
   const results = [
-    fixedScenario(MODELS.cheap),
-    fixedScenario(MODELS.mid),
-    fixedScenario(MODELS.frontier),
-    staticTierScenario(),
-    await routerScenario(core, "balanced"),
-    await routerScenario(core, "switch"),
+    fixedScenario(MODELS.cheap, suite),
+    fixedScenario(MODELS.mid, suite),
+    fixedScenario(MODELS.frontier, suite),
+    staticTierScenario(suite),
+    await routerScenario(core, "cache", { suite }),
+    await routerScenario(core, "balanced", { suite }),
+    await routerScenario(core, "switch", { suite }),
     await routerScenario(core, "balanced", {
+      suite,
       name: "router mixed (balanced)",
       overrides: {
         policyWeights: { cost: 0.6, quality: 0.35, latency: 0.05 },
@@ -404,13 +442,13 @@ async function main() {
   ]
 
   if (options.json) {
-    console.log(JSON.stringify({ turns: TURNS, results }, null, 2))
+    console.log(JSON.stringify({ suite: suite.name, turns: suite.turns, results }, null, 2))
     return 0
   }
 
-  const text = markdown(results)
+  const text = markdown(results, suite)
   if (options.write) {
-    const target = path.resolve(import.meta.dir, "../docs/benchmarks/2026-11-17-routing.md")
+    const target = path.resolve(import.meta.dir, `../docs/benchmarks/${suite.file}`)
     fs.mkdirSync(path.dirname(target), { recursive: true })
     fs.writeFileSync(target, text)
     console.log(`wrote ${target}`)
