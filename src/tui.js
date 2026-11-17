@@ -1,4 +1,4 @@
-import { configPath, readConfig, saveConfig } from "./config.js"
+import { configPath, formatWeights, readConfig, resolvePolicyWeights, saveConfig } from "./config.js"
 import { Judge } from "./judge.js"
 import {
   Provisioner,
@@ -69,6 +69,23 @@ async function show(context, message, title = "oMLX Router") {
   } else {
     await context.ui.toast.show({ title, message })
   }
+}
+
+function weightsReport(config) {
+  const lines = [
+    `policy    ${config.policy}`,
+    `weights   ${formatWeights(resolvePolicyWeights(config))}`,
+  ]
+  const classes = Object.keys(config.policyByClass ?? {})
+  if (classes.length) {
+    lines.push("classes")
+    for (const name of classes) {
+      lines.push(`  ${name.padEnd(16)} ${formatWeights(resolvePolicyWeights(config, name))}`)
+    }
+  }
+  lines.push(`config    ${configPath()}`)
+  lines.push("set policyWeights / policyByClass in config.json")
+  return lines.join("\n")
 }
 
 function poolLines(config, models, providers) {
@@ -473,9 +490,13 @@ async function runCommand(context, input) {
       return
     }
     case "policy": {
+      if (rest[0] === "custom" || rest[0] === "weights") {
+        await show(context, weightsReport(config))
+        return
+      }
       if (rest[0]) {
         if (!["cost", "quality", "latency"].includes(rest[0])) {
-          await show(context, "policy must be cost, quality, or latency")
+          await show(context, "policy must be cost, quality, latency, or custom")
           return
         }
         saveConfig({ ...config, policy: rest[0] })
@@ -490,9 +511,18 @@ async function runCommand(context, input) {
           { title: "Cost first", value: "cost", description: "Cheapest model that clears the bar; escalate when needed" },
           { title: "Quality first", value: "quality", description: "Strongest capable model; cost is a tiebreak" },
           { title: "Latency first", value: "latency", description: "Fastest capable model, favouring local and flash tiers" },
+          {
+            title: "Custom weights",
+            value: "custom",
+            description: "Inspect policyWeights and policyByClass; edit them in config.json",
+          },
         ],
       })
       if (!choice) return
+      if (choice === "custom") {
+        await show(context, weightsReport(config))
+        return
+      }
       saveConfig({ ...config, policy: choice })
       clearPins(HOST)
       await context.ui.toast.show({ title: "oMLX Router", message: `policy ${choice}`, variant: "success" })
@@ -689,6 +719,7 @@ async function runCommand(context, input) {
           "/router status",
           "/router on | off",
           "/router policy [cost|quality|latency]",
+          "/router policy custom",
           "/router pin-mode [cache|balanced|switch]",
           "/router pool",
           "/router history [n]",

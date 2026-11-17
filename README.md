@@ -232,6 +232,28 @@ and review floored at 3. Trivial turns skip the judge entirely.
 
 Changing the policy clears pins so the next turn is scored from scratch.
 
+### Custom weights
+
+Override any preset, and optionally vary the blend by turn class:
+
+```jsonc
+{
+  "policy": "cost",
+  "policyWeights": { "cost": 0.6, "quality": 0.35, "latency": 0.05 },
+  "policyByClass": {
+    "planning": { "cost": 0.1, "quality": 0.8, "latency": 0.1 },
+    "review":   { "cost": 0.1, "quality": 0.8, "latency": 0.1 },
+    "trivial":  { "cost": 0.85, "quality": 0.1, "latency": 0.05 }
+  }
+}
+```
+
+Turn classes are `trivial`, `routine`, `agentic`, `planning`, `review`, and
+`tool_continuation`. A class override wins over `policyWeights`; omitted fields
+inherit. `/router policy custom` prints the active weights and the config path.
+Weights change which model wins a turn; pin thresholds decide whether the router
+switches at all.
+
 ### Pinning
 
 Provider prompt caches are per model and per provider. A switch pays one full
@@ -489,6 +511,8 @@ Full example: [`config.example.json`](config.example.json).
 {
   "enabled": true,
   "policy": "cost",                       // cost | quality | latency
+  "policyWeights": null,                  // {cost, quality, latency} overrides
+  "policyByClass": {},                    // e.g. planning: {quality: 0.8}
 
   "pool": {
     "source": "favorites",                // favorites | list | available

@@ -1,6 +1,8 @@
 {
   "enabled": true,
   "policy": "cost",
+  "policyWeights": null,
+  "policyByClass": {},
   "pool": {
     "source": "favorites",
     "models": [],

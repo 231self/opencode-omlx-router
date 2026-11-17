@@ -4,6 +4,10 @@
 
 ### Added
 
+- Custom policy weights: `policyWeights` overrides any preset, and
+  `policyByClass` varies the blend by turn class (`planning`, `review`,
+  `trivial`, and so on). `/router policy custom` prints the active weights.
+  The benchmark adds a mixed-weight scenario.
 - `judge.provision.backend` (`auto` | `omlx` | `none`): llama.cpp and other
   OpenAI-compatible judge servers are detected, and the download commands print
   a setup recipe instead of failing on the oMLX admin API.

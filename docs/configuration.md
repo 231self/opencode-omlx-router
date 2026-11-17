@@ -20,7 +20,27 @@ Environment overrides (useful for tests and multi-profile setups):
 |---|---|---|
 | `enabled` | `true` | Master switch; hooks stay registered but do nothing |
 | `policy` | `"cost"` | `cost`, `quality`, or `latency` |
+| `policyWeights` | `null` | Partial override of the preset: `{cost, quality, latency}` |
+| `policyByClass` | `{}` | Per-turn-class overrides, merged over `policyWeights` |
 | `debug` | `false` | Adapter debug logs (never prompt text) |
+
+Weights are clamped at zero; if all three resolve to zero the preset is used.
+Turn classes are `trivial`, `routine`, `agentic`, `planning`, `review`, and
+`tool_continuation`. Example:
+
+```json
+{
+  "policy": "cost",
+  "policyWeights": { "cost": 0.6, "quality": 0.35, "latency": 0.05 },
+  "policyByClass": {
+    "planning": { "cost": 0.1, "quality": 0.8, "latency": 0.1 },
+    "trivial": { "cost": 0.85, "quality": 0.1, "latency": 0.05 }
+  }
+}
+```
+
+Weights select a model within a turn. Pin thresholds decide whether the router
+switches at all.
 
 ## `telemetry`
 

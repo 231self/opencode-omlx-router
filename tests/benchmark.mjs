@@ -237,8 +237,8 @@ function staticTierScenario() {
   }
 }
 
-async function routerScenario(core, mode) {
-  const config = settings({ mode })
+async function routerScenario(core, mode, { overrides = {}, name = `router ${mode}` } = {}) {
+  const config = mergeConfig(settings({ mode }), overrides)
   let pin = null
   let current = null
   let previousTokens = 0
@@ -293,7 +293,7 @@ async function routerScenario(core, mode) {
   }
 
   return {
-    name: `router ${mode}`,
+    name,
     qualityPass: passed,
     turns: TURNS,
     switches,
@@ -361,6 +361,10 @@ function markdown(results) {
     "  `flipFlopTurns` decide how long an expensive incumbent stays. Short",
     "  sessions favour `switch`; long sessions with a large stable prefix can",
     "  favour `cache` or `balanced`.",
+    "- `mixed` weights (0.6 / 0.35 / 0.05, with quality-heavy planning and review)",
+    "  also land at $0.827. The weights change scores, and the pin still clears the",
+    "  0.12 threshold by the same margin. Weights express preference; the pin",
+    "  settings set the cost.",
     "",
     "## Reproduce",
     "",
@@ -387,6 +391,16 @@ async function main() {
     staticTierScenario(),
     await routerScenario(core, "balanced"),
     await routerScenario(core, "switch"),
+    await routerScenario(core, "balanced", {
+      name: "router mixed (balanced)",
+      overrides: {
+        policyWeights: { cost: 0.6, quality: 0.35, latency: 0.05 },
+        policyByClass: {
+          planning: { cost: 0.1, quality: 0.8, latency: 0.1 },
+          review: { cost: 0.1, quality: 0.8, latency: 0.1 },
+        },
+      },
+    }),
   ]
 
   if (options.json) {

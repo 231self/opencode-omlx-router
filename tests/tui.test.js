@@ -135,6 +135,18 @@ test("/router status renders a dialog", async () => {
   expect(alert.message).toContain("policy")
 })
 
+test("/router policy custom prints the active weights", async () => {
+  environment()
+  const { config } = readConfig({ write: true })
+  saveConfig({ ...config, policyWeights: { cost: 0.6, quality: 0.35, latency: 0.05 } })
+  const { context, messages, command } = fakeContext()
+  tui.setup(context)
+  await command().run("policy custom")
+  const alert = messages.find((entry) => entry.kind === "alert")
+  expect(alert.message).toContain("0.35")
+  expect(alert.message).toContain("config")
+})
+
 test("/router version prints the router version", async () => {
   environment()
   const { context, messages, command } = fakeContext()

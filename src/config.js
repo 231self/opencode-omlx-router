@@ -7,6 +7,8 @@ import { writeJsonAtomic } from "./state.js"
 export const DEFAULT_CONFIG = {
   enabled: true,
   policy: "cost",
+  policyWeights: null,
+  policyByClass: {},
   pool: {
     source: "favorites",
     models: [],
@@ -85,6 +87,34 @@ export const DEFAULT_CONFIG = {
 
 export function configPath(env = process.env) {
   return env.OMLX_ROUTER_CONFIG || path.join(os.homedir(), ".config", "omlx-router", "config.json")
+}
+
+export const POLICY_PRESETS = {
+  cost: { cost: 0.6, quality: 0.3, latency: 0.1 },
+  quality: { cost: 0.1, quality: 0.8, latency: 0.1 },
+  latency: { cost: 0.2, quality: 0.2, latency: 0.6 },
+}
+
+/**
+ * Resolve policy weights the same way the WASM core does: preset, then
+ * `policyWeights`, then the `policyByClass` entry for the turn class.
+ */
+export function resolvePolicyWeights(config = {}, turnClass = "") {
+  const base = { ...(POLICY_PRESETS[config?.policy] ?? POLICY_PRESETS.cost) }
+  for (const source of [config?.policyWeights, config?.policyByClass?.[turnClass]]) {
+    if (!source || typeof source !== "object") continue
+    for (const key of ["cost", "quality", "latency"]) {
+      const value = Number(source[key])
+      if (Number.isFinite(value)) base[key] = Math.max(0, value)
+    }
+  }
+  const total = base.cost + base.quality + base.latency
+  return total > 0 ? base : { ...(POLICY_PRESETS[config?.policy] ?? POLICY_PRESETS.cost) }
+}
+
+export function formatWeights(weights) {
+  const value = weights ?? POLICY_PRESETS.cost
+  return `cost ${value.cost} · quality ${value.quality} · latency ${value.latency}`
 }
 
 /** Expand a `{env:NAME}` reference; an empty value means "no credential". */

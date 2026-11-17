@@ -9,6 +9,7 @@ import {
   getConfigValue,
   mergeConfig,
   readConfig,
+  resolvePolicyWeights,
   saveConfig,
   setConfigValue,
 } from "../src/config.js"
@@ -83,4 +84,23 @@ test("saveConfig writes merged defaults", () => {
 
 test("the default judge timeout covers a cold 4B judge", () => {
   expect(DEFAULT_CONFIG.judge.timeoutMs).toBe(5000)
+})
+
+test("custom policy weights layer over presets and per class", () => {
+  const config = {
+    policy: "cost",
+    policyWeights: { cost: 0.6, quality: 0.35, latency: 0.05 },
+    policyByClass: {
+      planning: { cost: 0.1, quality: 0.8, latency: 0.1 },
+      trivial: { cost: 0.85, quality: 0.1 },
+    },
+  }
+  expect(resolvePolicyWeights(config)).toEqual({ cost: 0.6, quality: 0.35, latency: 0.05 })
+  expect(resolvePolicyWeights(config, "planning")).toEqual({ cost: 0.1, quality: 0.8, latency: 0.1 })
+  expect(resolvePolicyWeights(config, "trivial")).toEqual({ cost: 0.85, quality: 0.1, latency: 0.05 })
+})
+
+test("zero policy weights fall back to the preset", () => {
+  const config = { policy: "cost", policyWeights: { cost: 0, quality: 0, latency: 0 } }
+  expect(resolvePolicyWeights(config)).toEqual({ cost: 0.6, quality: 0.3, latency: 0.1 })
 })

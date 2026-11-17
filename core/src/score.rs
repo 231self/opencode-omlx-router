@@ -1,5 +1,5 @@
 use crate::envelope::Envelope;
-use crate::types::{AgentPolicy, Candidate, Pin, PoolModel, Settings, Verdict};
+use crate::types::{AgentPolicy, Candidate, Pin, PoolModel, Settings, Verdict, WeightOverride};
 
 pub struct ScoreContext<'a> {
     pub settings: &'a Settings,
@@ -31,11 +31,58 @@ fn percentile(value: f64, values: &[f64]) -> f64 {
     (less as f64 + equal as f64 * 0.5) / values.len() as f64
 }
 
-pub fn weights(policy: &str) -> (f64, f64, f64) {
+#[derive(Debug, Clone, Copy)]
+pub struct Weights {
+    pub cost: f64,
+    pub quality: f64,
+    pub latency: f64,
+}
+
+pub fn preset(policy: &str) -> Weights {
     match policy {
-        "quality" => (0.1, 0.8, 0.1),
-        "latency" => (0.2, 0.2, 0.6),
-        _ => (0.6, 0.3, 0.1),
+        "quality" => Weights {
+            cost: 0.1,
+            quality: 0.8,
+            latency: 0.1,
+        },
+        "latency" => Weights {
+            cost: 0.2,
+            quality: 0.2,
+            latency: 0.6,
+        },
+        _ => Weights {
+            cost: 0.6,
+            quality: 0.3,
+            latency: 0.1,
+        },
+    }
+}
+
+fn apply(mut weights: Weights, overrides: Option<&WeightOverride>) -> Weights {
+    if let Some(overrides) = overrides {
+        if let Some(cost) = overrides.cost {
+            weights.cost = cost.max(0.0);
+        }
+        if let Some(quality) = overrides.quality {
+            weights.quality = quality.max(0.0);
+        }
+        if let Some(latency) = overrides.latency {
+            weights.latency = latency.max(0.0);
+        }
+    }
+    weights
+}
+
+/// Resolve the active weights: preset, then global overrides, then the
+/// per-turn-class override for this envelope.
+pub fn weights(settings: &Settings, turn_class: &str, policy: &str) -> Weights {
+    let base = apply(preset(policy), settings.policy_weights.as_ref());
+    let resolved = apply(base, settings.policy_by_class.get(turn_class));
+    let total = resolved.cost + resolved.quality + resolved.latency;
+    if total.is_finite() && total > 0.0 {
+        resolved
+    } else {
+        preset(policy)
     }
 }
 
@@ -276,7 +323,8 @@ pub fn evaluate(pool: &[PoolModel], ctx: &ScoreContext<'_>) -> Vec<Candidate> {
 
         let shortfall = (required - quality).max(0.0);
         let penalty = shortfall * 2.5;
-        let (w_cost, w_quality, w_latency) = weights(ctx.policy);
+        let resolved = weights(ctx.settings, &ctx.envelope.turn_class, ctx.policy);
+        let (w_cost, w_quality, w_latency) = (resolved.cost, resolved.quality, resolved.latency);
         let cost_score = 1.0
             - percentile(
                 cost_usd,
@@ -347,7 +395,7 @@ pub fn evaluate(pool: &[PoolModel], ctx: &ScoreContext<'_>) -> Vec<Candidate> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::{CacheCost, Capabilities, CostTier, ModelLimits, TurnInfo};
+    use crate::types::{CacheCost, Capabilities, CostTier, ModelLimits, TurnInfo, WeightOverride};
 
     fn model(id: &str, input: f64, output: f64, context: u64, quality: Option<f64>) -> PoolModel {
         PoolModel {
@@ -534,5 +582,58 @@ mod tests {
         let result = evaluate(&[weak], &ctx(&settings, &verdict, &envelope, "cost"));
         assert_eq!(result.len(), 1);
         assert!(result[0].required > result[0].quality);
+    }
+
+    #[test]
+    fn custom_weights_override_the_preset() {
+        let mut settings = settings("cost");
+        settings.policy_weights = Some(WeightOverride {
+            cost: Some(0.2),
+            quality: Some(0.7),
+            latency: Some(0.1),
+        });
+        let resolved = weights(&settings, "routine", "cost");
+        assert!((resolved.cost - 0.2).abs() < 1e-9);
+        assert!((resolved.quality - 0.7).abs() < 1e-9);
+        assert!((resolved.latency - 0.1).abs() < 1e-9);
+    }
+
+    #[test]
+    fn per_class_weights_win_over_global_overrides() {
+        let mut settings = settings("cost");
+        settings.policy_weights = Some(WeightOverride {
+            cost: Some(0.2),
+            quality: Some(0.7),
+            latency: None,
+        });
+        settings.policy_by_class.insert(
+            "planning".to_string(),
+            WeightOverride {
+                cost: Some(0.0),
+                quality: Some(0.9),
+                latency: Some(0.1),
+            },
+        );
+        let planning = weights(&settings, "planning", "cost");
+        assert!((planning.cost - 0.0).abs() < 1e-9);
+        assert!((planning.quality - 0.9).abs() < 1e-9);
+        let routine = weights(&settings, "routine", "cost");
+        assert!((routine.cost - 0.2).abs() < 1e-9);
+        assert!((routine.quality - 0.7).abs() < 1e-9);
+    }
+
+    #[test]
+    fn zero_custom_weights_fall_back_to_the_preset() {
+        let mut settings = settings("cost");
+        settings.policy_weights = Some(WeightOverride {
+            cost: Some(0.0),
+            quality: Some(0.0),
+            latency: Some(0.0),
+        });
+        let resolved = weights(&settings, "routine", "cost");
+        let base = preset("cost");
+        assert!((resolved.cost - base.cost).abs() < 1e-9);
+        assert!((resolved.quality - base.quality).abs() < 1e-9);
+        assert!((resolved.latency - base.latency).abs() < 1e-9);
     }
 }

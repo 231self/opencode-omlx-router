@@ -136,11 +136,21 @@ pub struct CacheCost {
     pub write: f64,
 }
 
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct WeightOverride {
+    pub cost: Option<f64>,
+    pub quality: Option<f64>,
+    pub latency: Option<f64>,
+}
+
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct Settings {
     pub enabled: bool,
     pub policy: String,
+    pub policy_weights: Option<WeightOverride>,
+    pub policy_by_class: std::collections::BTreeMap<String, WeightOverride>,
     pub pool: PoolSettings,
     pub judge: JudgeSettings,
     pub limits: Limits,
@@ -155,6 +165,8 @@ impl Default for Settings {
         Self {
             enabled: true,
             policy: "cost".to_string(),
+            policy_weights: None,
+            policy_by_class: std::collections::BTreeMap::new(),
             pool: PoolSettings::default(),
             judge: JudgeSettings::default(),
             limits: Limits::default(),
