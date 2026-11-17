@@ -6,8 +6,10 @@ import { Judge } from "../src/judge.js"
 import {
   Provisioner,
   confirmThenPull,
+  detectProvisioning,
   formatBytes,
   judgeAvailability,
+  provisionHint,
 } from "../src/provision.js"
 import { readHostModelState } from "../src/pool.js"
 import { buildStatus, formatMilliseconds, formatStatus, formatTiming } from "../src/status.js"
@@ -207,6 +209,14 @@ async function judgeCommand() {
   const { config } = readConfig({ write: true })
   const provision = new Provisioner({ config })
 
+  if (["pull", "status", "cancel"].includes(action)) {
+    const backend = await detectProvisioning({ config })
+    if (!backend.supported) {
+      console.log(provisionHint(config))
+      return
+    }
+  }
+
   if (action === "status") {
     const tasks = await provision.tasks()
     if (tasks.length === 0) {
@@ -329,9 +339,21 @@ async function doctorCommand() {
     if (models.length) console.log(`models   ${models.join(", ")}`)
     console.log(`selected ${config.judge.model}`)
     const availability = await judgeAvailability({ config })
+    const backend = await detectProvisioning({ config }).catch((error) => ({
+      supported: false,
+      backend: "unknown",
+      reason: String(error?.message ?? error),
+    }))
     if (!availability.suitable) {
-      console.log("hint     no ~4B judge detected; run: omlx-router judge pull")
+      console.log(
+        `hint     no ~4B judge detected; ${
+          backend.supported ? "run: omlx-router judge pull" : "start a small model on your server"
+        }`,
+      )
     }
+    console.log(
+      `downloads ${backend.supported ? backend.backend : `unavailable (${backend.reason})`}`,
+    )
   } catch (error) {
     console.log(`judge    ${base} -> ${controller.signal.aborted ? "timeout" : String(error?.message ?? error)}`)
     process.exitCode = 1

@@ -82,6 +82,49 @@ async function detailOf(response) {
   }
 }
 
+/**
+ * Decide whether judge downloads can be managed through the configured
+ * endpoint. Downloads use the oMLX admin API; any other OpenAI-compatible
+ * server (for example llama.cpp) exposes only `/v1`.
+ */
+export async function detectProvisioning({ config, fetchImpl = globalThis.fetch } = {}) {
+  const provision = config?.judge?.provision ?? {}
+  const backend = provision.backend ?? "auto"
+  if (backend === "none") {
+    return { supported: false, backend: "none", reason: "judge.provision.backend is none" }
+  }
+  if (backend === "omlx") return { supported: true, backend: "omlx" }
+
+  let response
+  try {
+    response = await fetchImpl(`${adminBase(config)}/api/hf/tasks`, { method: "GET" })
+  } catch (error) {
+    return { supported: false, backend: "openai-compatible", reason: String(error?.message ?? error) }
+  }
+  // A 401/403 still proves the oMLX admin API exists; 404 means the endpoint
+  // only speaks the OpenAI-compatible API.
+  if (response.status === 404) {
+    return { supported: false, backend: "openai-compatible", reason: "no oMLX admin API at this endpoint" }
+  }
+  return { supported: true, backend: "omlx" }
+}
+
+/** Explain how to get a judge without the oMLX download helper. */
+export function provisionHint(config) {
+  const base = String(config?.judge?.baseURL ?? "http://127.0.0.1:1234/v1").replace(/\/+$/, "")
+  return [
+    "Judge downloads use the oMLX admin API, which this endpoint does not expose.",
+    "Any OpenAI-compatible endpoint works as a judge; only the download helper is oMLX-specific.",
+    "",
+    "For llama.cpp:",
+    "  llama-server -m Qwen3-4B-Instruct-2507-Q4_K_M.gguf --port 8080",
+    `  omlx-router config set judge.baseURL http://127.0.0.1:8080/v1`,
+    `  omlx-router config set judge.model auto`,
+    "",
+    `Current judge endpoint: ${base}`,
+  ].join("\n")
+}
+
 export class Provisioner {
   constructor({ config, env = process.env, fetchImpl = globalThis.fetch, sleep } = {}) {
     this.config = config

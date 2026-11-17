@@ -26,6 +26,7 @@ export const DEFAULT_CONFIG = {
     cacheSize: 128,
     provision: {
       enabled: true,
+      backend: "auto",
       repo: "mlx-community/Qwen3-4B-Instruct-2507-4bit",
       adminApiKey: "{env:OMLX_ADMIN_API_KEY}",
       readSettingsKey: true,

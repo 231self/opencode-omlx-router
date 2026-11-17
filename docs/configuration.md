@@ -71,6 +71,7 @@ selects nothing.
 | Key | Default | Notes |
 |---|---|---|
 | `enabled` | `true` | Allows the plugin to *offer* a download; consent is always required |
+| `backend` | `"auto"` | `auto` probes the endpoint, `omlx` forces the admin API, `none` disables downloads |
 | `repo` | `mlx-community/Qwen3-4B-Instruct-2507-4bit` | Recommended judge |
 | `adminApiKey` | `{env:OMLX_ADMIN_API_KEY}` | oMLX main key; sub-keys cannot administer downloads |
 | `readSettingsKey` | `true` | Fall back to `auth.api_key` in `~/.omlx/settings.json` |

@@ -9,8 +9,10 @@ import {
   adminBase,
   adminKey,
   confirmThenPull,
+  detectProvisioning,
   formatBytes,
   judgeAvailability,
+  provisionHint,
   summariseModelInfo,
   validateRepo,
 } from "../src/provision.js"
@@ -80,6 +82,36 @@ test("adminBase strips /v1 and appends /admin", () => {
   expect(adminBase({ judge: { baseURL: "http://127.0.0.1:1234/v1" } })).toBe("http://127.0.0.1:1234/admin")
   expect(adminBase({ judge: { baseURL: "http://127.0.0.1:1234/v1/" } })).toBe("http://127.0.0.1:1234/admin")
   expect(adminBase({ judge: { baseURL: "http://127.0.0.1:1234" } })).toBe("http://127.0.0.1:1234/admin")
+})
+
+test("auto provisioning recognises llama.cpp and returns a setup hint", async () => {
+  const fetchImpl = async () => json({ error: "not found" }, { status: 404 })
+  const result = await detectProvisioning({ config: config(), fetchImpl })
+  expect(result.supported).toBe(false)
+  expect(result.backend).toBe("openai-compatible")
+  expect(provisionHint(config())).toContain("llama-server")
+  expect(provisionHint(config())).toContain("judge.baseURL")
+})
+
+test("auto provisioning treats an admin 401 as oMLX", async () => {
+  const fetchImpl = async () => json({ error: "unauthorized" }, { status: 401 })
+  const result = await detectProvisioning({ config: config(), fetchImpl })
+  expect(result.supported).toBe(true)
+  expect(result.backend).toBe("omlx")
+})
+
+test("backend none disables downloads without probing", async () => {
+  let probed = false
+  const fetchImpl = async () => {
+    probed = true
+    return json({}, { status: 404 })
+  }
+  const cfg = config()
+  cfg.judge.provision.backend = "none"
+  const result = await detectProvisioning({ config: cfg, fetchImpl })
+  expect(result.supported).toBe(false)
+  expect(result.backend).toBe("none")
+  expect(probed).toBe(false)
 })
 
 test("adminKey prefers config and can fall back to oMLX settings", () => {

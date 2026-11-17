@@ -52,6 +52,7 @@ export function configDigest(config = {}) {
       model: config.judge?.model ?? "auto",
       timeoutMs: Number(config.judge?.timeoutMs) || 0,
       provision: config.judge?.provision?.enabled !== false,
+      provisionBackend: config.judge?.provision?.backend ?? "auto",
     },
     pin: {
       mode: config.pin?.mode ?? "balanced",

@@ -440,9 +440,31 @@ Verify with:
 ```
 
 This prints the selected model, a sample verdict, and the round-trip latency.
-Any OpenAI-compatible judge endpoint works, not only oMLX: point
-`judge.baseURL` at another server (for example a local `llama-server`) and the
-verdict path is unchanged. The download helper is oMLX-specific.
+
+### Using llama.cpp or another server
+
+The verdict path is plain OpenAI-compatible: `GET /v1/models` and
+`POST /v1/chat/completions`, an optional Bearer key, and `response_format` with a
+fallback for servers that reject it. Point `judge.baseURL` at any such server.
+
+```sh
+llama-server -m Qwen3-4B-Instruct-2507-Q4_K_M.gguf --port 8080
+```
+
+```jsonc
+{
+  "judge": {
+    "baseURL": "http://127.0.0.1:8080/v1",
+    "model": "auto",                    // or the alias llama-server reports
+    "provision": { "backend": "none" }  // optional; auto-detected anyway
+  }
+}
+```
+
+The download helper (`judge pull`, `judge status`, `judge cancel`) uses the oMLX
+admin API. On any other endpoint the plugin detects that and prints the setup
+recipe instead of failing. Routing, pinning, the optimiser, and timing are
+backend-agnostic.
 
 ## Configuration
 
@@ -478,6 +500,7 @@ Full example: [`config.example.json`](config.example.json).
     "cacheSize": 128,
     "provision": {
       "enabled": true,
+      "backend": "auto",
       "repo": "mlx-community/Qwen3-4B-Instruct-2507-4bit",
       "adminApiKey": "{env:OMLX_ADMIN_API_KEY}",
       "readSettingsKey": true,

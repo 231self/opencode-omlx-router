@@ -3,8 +3,10 @@ import { Judge } from "./judge.js"
 import {
   Provisioner,
   confirmThenPull,
+  detectProvisioning,
   formatBytes,
   judgeAvailability,
+  provisionHint,
 } from "./provision.js"
 import { readHostModelState, resolvePool } from "./pool.js"
 import {
@@ -276,6 +278,11 @@ function taskLine(task) {
 }
 
 async function offerPull(context, config, repo, reason, background) {
+  const backend = await detectProvisioning({ config })
+  if (!backend.supported) {
+    await show(context, [reason, provisionHint(config)].filter(Boolean).join("\n\n"))
+    return
+  }
   const provision = new Provisioner({ config })
   let result
   try {
@@ -618,10 +625,20 @@ async function runCommand(context, input) {
         return
       }
       if (action === "status") {
+        const backend = await detectProvisioning({ config })
+        if (!backend.supported) {
+          await show(context, provisionHint(config))
+          return
+        }
         await judgeTasks(context, config)
         return
       }
       if (action === "cancel") {
+        const backend = await detectProvisioning({ config })
+        if (!backend.supported) {
+          await show(context, provisionHint(config))
+          return
+        }
         await cancelJudgeTask(context, config, rest[1])
         return
       }
