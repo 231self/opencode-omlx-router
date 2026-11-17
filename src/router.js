@@ -45,18 +45,33 @@ function label(reference) {
   return `${reference.providerID}/${reference.id ?? reference.modelID}`
 }
 
+const FAILOVER_STATUS = new Set([401, 402, 403, 408, 429])
+const FAILOVER_TEXT =
+  /rate.?limit|overload|timeout|quota|unavailable|capacity|credit|billing|balance|insufficient|usage.?limit|exhaust|no more tokens/i
+const PROVIDER_WIDE_TEXT = /credit|billing|balance|insufficient|quota|usage.?limit|exhaust|account|organization/i
+
 /** Provider failures worth routing around, not merely retrying. */
 export function isFailoverError(error) {
   const status = Number(error?.status) || 0
   const type = String(error?.type ?? "")
-  if ([401, 403, 408, 429].includes(status) || status >= 500) return true
-  return /rate.?limit|overload|timeout|quota|unavailable|capacity/i.test(type)
+  if (FAILOVER_STATUS.has(status) || status >= 500) return true
+  return FAILOVER_TEXT.test(`${type} ${error?.message ?? ""}`)
+}
+
+/** Auth, billing, and quota failures usually affect the whole provider. */
+export function isProviderWide(error) {
+  const status = Number(error?.status) || 0
+  if ([401, 402, 403].includes(status)) return true
+  const type = String(error?.type ?? "")
+  return PROVIDER_WIDE_TEXT.test(`${type} ${error?.message ?? ""}`)
 }
 
 export function cooldownFor(config, error) {
   const failover = config?.failover ?? {}
   const status = Number(error?.status) || 0
-  if (status === 401 || status === 403) return Number(failover.authCooldownMs) || 1_800_000
+  if (status === 401 || status === 402 || status === 403) {
+    return Number(failover.authCooldownMs) || 1_800_000
+  }
   if (status === 429) return Number(failover.cooldownMs) || 300_000
   return Number(failover.serverCooldownMs) || 60_000
 }
@@ -71,28 +86,29 @@ export function activeBlocks(pin, now = Date.now()) {
 
 function blockedModel(blocked, reference) {
   if (!reference) return false
-  return blocked.some(
-    (block) =>
-      String(block.providerID) === String(reference.providerID) &&
-      String(block.id) === String(reference.id ?? reference.modelID),
-  )
+  return blocked.some((block) => {
+    if (String(block.providerID) !== String(reference.providerID)) return false
+    return block.providerWide
+      ? true
+      : String(block.id) === String(reference.id ?? reference.modelID)
+  })
 }
 
-function upsertBlock(blocked, reference, until, reason, now) {
+function upsertBlock(blocked, reference, until, reason, now, providerWide = false) {
   const keep = (Array.isArray(blocked) ? blocked : [])
     .filter((block) => block && Number(block.until) > now)
-    .filter(
-      (block) =>
-        !(
-          String(block.providerID) === String(reference.providerID) &&
-          String(block.id) === String(reference.id ?? reference.modelID)
-        ),
-    )
+    .filter((block) => {
+      if (String(block.providerID) !== String(reference.providerID)) return true
+      return providerWide
+        ? false
+        : String(block.id) !== String(reference.id ?? reference.modelID)
+    })
   keep.push({
     providerID: reference.providerID,
     id: reference.id ?? reference.modelID,
     until,
     reason,
+    ...(providerWide ? { providerWide: true } : {}),
   })
   return keep.slice(-8)
 }
@@ -423,12 +439,14 @@ export class Router {
       const now = Date.now()
       const cooldown = cooldownFor(config, event?.error)
       const pin = readPin(this.host, sessionID, this.env) ?? {}
+      const providerWide = isProviderWide(event?.error)
       const blocked = upsertBlock(
         pin.blocked,
         failed,
         now + cooldown,
         String(event?.error?.status ?? event?.error?.type ?? "error"),
         now,
+        providerWide,
       )
       const last = readDecisions(this.host, 1, this.env)[0] ?? null
       const to = nextCandidate(last, failed, blocked)
@@ -471,6 +489,7 @@ export class Router {
             to: to ? label(to) : null,
             status: Number(event?.error?.status) || null,
             until: now + cooldown,
+            providerWide,
           },
         },
         this.env,

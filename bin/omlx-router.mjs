@@ -180,7 +180,15 @@ function pinsCommand() {
   for (const pin of sorted) {
     const when = Number(pin.lastTurnAt) || Number(pin.since) || 0
     const age = when ? `${Math.max(0, Math.round((Date.now() - when) / 60000))}m` : "?"
-    console.log(`${modelRefLabel(pin.model).padEnd(42)} ${pin.forced ? "manual" : "auto"}  ${age} old`)
+    const blocks = (Array.isArray(pin.blocked) ? pin.blocked : []).filter(
+      (block) => block && Number(block.until) > Date.now(),
+    )
+    const blocked = blocks.length
+      ? `  blocked ${blocks
+          .map((block) => `${block.providerID}/${block.id}${block.providerWide ? " (provider)" : ""}`)
+          .join(", ")}`
+      : ""
+    console.log(`${modelRefLabel(pin.model).padEnd(42)} ${pin.forced ? "manual" : "auto"}  ${age} old${blocked}`)
   }
 }
 

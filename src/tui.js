@@ -73,7 +73,15 @@ function pinLines(pins) {
     .sort((left, right) => (Number(right.lastTurnAt) || 0) - (Number(left.lastTurnAt) || 0))
     .map((pin) => {
       const age = formatAge(now - (Number(pin.lastTurnAt) || Number(pin.since) || now))
-      return `${modelLabel(pin.model)} · ${pin.forced ? "manual" : "auto"} · ${age} old`
+      const blocks = (Array.isArray(pin.blocked) ? pin.blocked : []).filter(
+        (block) => block && Number(block.until) > now,
+      )
+      const blocked = blocks.length
+        ? ` · blocked ${blocks
+            .map((block) => `${block.providerID}/${block.id}${block.providerWide ? " (provider)" : ""}`)
+            .join(", ")}`
+        : ""
+      return `${modelLabel(pin.model)} · ${pin.forced ? "manual" : "auto"} · ${age} old${blocked}`
     })
 }
 

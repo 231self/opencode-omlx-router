@@ -144,6 +144,15 @@ test("/router pins lists automatic routing state and can clear it", async () => 
     source: "judge",
     since: Date.now() - 60_000,
     lastTurnAt: Date.now() - 60_000,
+    blocked: [
+      {
+        providerID: "deepseek",
+        id: "deepseek-flash",
+        until: Date.now() + 60_000,
+        reason: "429",
+        providerWide: true,
+      },
+    ],
   })
   const { context, messages, command } = fakeContext()
   tui.setup(context)
@@ -151,6 +160,7 @@ test("/router pins lists automatic routing state and can clear it", async () => 
   const alert = messages.find((entry) => entry.kind === "alert")
   expect(alert.message).toContain("deepseek/deepseek-flash")
   expect(alert.message).toContain("auto")
+  expect(alert.message).toContain("blocked deepseek/deepseek-flash (provider)")
   await command().run("pins clear")
   expect(listPins("opencode").length).toBe(0)
 })

@@ -8,6 +8,9 @@
   model, with local models marked free.
 - `/router pins` lists the automatic per-session routing state, marks manual
   pins, and can clear all pins. Status now says "sessions" next to the count.
+- Failover now handles payment and quota failures (HTTP 402, insufficient
+  credits/balance, usage limits) and blocks the whole provider for auth, billing,
+  or quota errors. Rate limits and server errors still block only the model.
 
 ### Changed
 

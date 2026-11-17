@@ -130,15 +130,17 @@ directory and is rediscovered on completion. The admin key is never logged.
 | `enabled` | `true` | Route around provider failures instead of hammering a dead model |
 | `cooldownMs` | `300000` | 429 cooldown; the model is excluded from routing |
 | `serverCooldownMs` | `60000` | 5xx, timeout, and overload cooldown |
-| `authCooldownMs` | `1800000` | 401/403 cooldown |
+| `authCooldownMs` | `1800000` | 401/402/403, billing, and quota cooldown |
 | `redirectTtlMs` | `60000` | How long a queued same-turn redirect stays valid |
 | `retryDelayMs` | `1000` | Delay used only when the host decided not to retry |
 
 On a provider failure the plugin blocks the model for the session, clears the
 pin, and queues the next candidate from the last decision. OpenCode's
 `model.resolve` hook performs the swap on the retry; if it never fires, the
-blocked model is simply excluded from the next turn. 400-class request errors
-are not treated as provider failures.
+blocked model is simply excluded from the next turn. Auth, payment, billing, and
+quota failures block the whole provider; 429 and 5xx block the model. 400-class
+request errors are not treated as provider failures. A switch requires another
+eligible model or provider in the pool.
 
 ## `pin`
 

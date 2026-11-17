@@ -3,7 +3,7 @@ import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 
-import { Router } from "../src/router.js"
+import { Router, isFailoverError, isProviderWide } from "../src/router.js"
 import { appendDecision, readDecisions, readPin, writePin } from "../src/state.js"
 
 const MODELS = [
@@ -216,6 +216,46 @@ test("retry blocks the failed model and queues the next candidate", () => {
   expect(next.model.id).toBe("deepseek-v4-pro")
   expect(readPin("opencode", "ses_1", env).redirect).toBe(null)
   expect(readDecisions("opencode", 1, env)[0].stage).toBe("failover/redirect")
+})
+
+test("failover recognises quota and billing failures", () => {
+  expect(isFailoverError({ status: 402, message: "insufficient credits" })).toBe(true)
+  expect(isFailoverError({ status: 429, type: "rate-limit" })).toBe(true)
+  expect(isFailoverError({ status: 400, type: "provider.invalid-request" })).toBe(false)
+  expect(isProviderWide({ status: 402 })).toBe(true)
+  expect(isProviderWide({ status: 401 })).toBe(true)
+  expect(isProviderWide({ status: 429, type: "rate-limit" })).toBe(false)
+  expect(isProviderWide({ status: 429, message: "quota exceeded" })).toBe(true)
+})
+
+test("a billing failure blocks the provider and redirects to another one", () => {
+  const env = tempEnv()
+  appendDecision(
+    "opencode",
+    {
+      ts: 1,
+      session: "hash",
+      chosen: "deepseek/deepseek-flash",
+      top: [
+        { providerID: "deepseek", id: "deepseek-flash", variant: "default", score: 0.9 },
+        { providerID: "deepseek", id: "deepseek-v4-pro", variant: "default", score: 0.8 },
+        { providerID: "openai", id: "gpt-6.1-sol", variant: "default", score: 0.7 },
+      ],
+    },
+    env,
+  )
+  const { router } = harness({ env })
+  router.retry({
+    sessionID: "ses_1",
+    model: { providerID: "deepseek", id: "deepseek-flash", variant: "default" },
+    error: { status: 402, message: "insufficient credits" },
+    attempt: 2,
+    decision: { retry: false },
+  })
+  const pin = readPin("opencode", "ses_1", env)
+  expect(pin.blocked[0].providerWide).toBe(true)
+  expect(pin.redirect.to.providerID).toBe("openai")
+  expect(pin.redirect.to.id).toBe("gpt-6.1-sol")
 })
 
 test("retry ignores 400-class request errors", () => {
