@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.2.1 — 2026-11-17
+
+### Added
+
+- `/router pricing` shows input, output, and cache-read prices for each pool
+  model, with local models marked free.
+
+### Changed
+
+- The Policy menu item now says it also covers custom weights.
+
 ## 0.2.0 — 2026-11-17
 
 ### Added

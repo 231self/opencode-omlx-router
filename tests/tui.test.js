@@ -136,6 +136,22 @@ test("/router status renders a dialog", async () => {
   expect(alert.message).toContain("policy")
 })
 
+test("/router pricing lists per-model token prices", async () => {
+  environment()
+  const { config } = readConfig({ write: true })
+  saveConfig({
+    ...config,
+    pool: { ...config.pool, source: "list", models: ["deepseek/deepseek-flash"] },
+  })
+  const { context, messages, command } = fakeContext()
+  tui.setup(context)
+  await command().run("pricing")
+  const alert = messages.find((entry) => entry.kind === "alert")
+  expect(alert.message).toContain("deepseek/deepseek-flash")
+  expect(alert.message).toContain("in $0.2")
+  expect(alert.message).toContain("out $0.8")
+})
+
 test("/router quality reports the cached score source", async () => {
   environment()
   writeQualityCache(

@@ -15,7 +15,7 @@ a model that will fail it.
 
 </div>
 
-> **Status: v0.2.0.** Routing, the context optimiser, subagent policy, the TUI
+> **Status: v0.2.1.** Routing, the context optimiser, subagent policy, the TUI
 > `/router` surface, per-turn timing, the CLI, and the Kilo shim are implemented
 > and tested. Design of record:
 > [`docs/specs/2026-11-15-opencode-omlx-router-design.md`](docs/specs/2026-11-15-opencode-omlx-router-design.md).
@@ -732,9 +732,10 @@ the CLI for headless `opencode run`/`serve`, OpenCode Desktop, and Kilo.
 | `/router version` | Router version, host, core ABI, and config path |
 | `/router debug` | Diagnostics: paths, config digest, judge, pool, last decision, timing |
 | `/router on` / `/router off` | Enable or disable routing |
-| `/router policy` | Interactive picker for `cost` / `quality` / `latency`; clears pins |
+| `/router policy` | Interactive picker for `cost` / `quality` / `latency`, or custom weights; clears pins |
 | `/router pin-mode` | Interactive picker for `cache` / `balanced` / `switch` |
 | `/router pool` | Interactive pool setup: favorites, explicit list, or all available; shows context, cost, and quality per model |
+| `/router pricing` | Input, output, and cache-read prices per pool model |
 | `/router history [n]` | Recent decisions, including subagents and judge/route time |
 | `/router timing [n]` | Local judge vs remote model vs tool time per turn |
 | `/router explain` | Readable why: chosen model, policy, verdict, top scores, and per-turn costs |

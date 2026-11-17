@@ -128,6 +128,34 @@ function poolLines(config, models, providers) {
   return lines.join("\n")
 }
 
+function pricingLines(config, models, providers) {
+  const resolved = resolvePool({
+    models,
+    providers,
+    config,
+    host: HOST,
+    qualityScores: loadQualityScores({ config }),
+  })
+  const lines = []
+  for (const model of resolved.pool) {
+    const tier = Array.isArray(model.cost) ? model.cost[0] : null
+    const localFree = model.local && config.pool.localCostZero !== false
+    const price = localFree
+      ? "free (local)"
+      : tier
+        ? `in $${tier.input} · out $${tier.output} · cache read $${tier.cache?.read ?? 0} /M`
+        : "unknown"
+    lines.push(
+      `${model.providerID}/${model.modelID}${model.variant && model.variant !== "default" ? `#${model.variant}` : ""}  ${price}`,
+    )
+  }
+  if (lines.length === 0) lines.push("no models selected; run /router pool")
+  lines.push("")
+  lines.push(`source ${resolved.source} · ${resolved.pool.length} models · per million tokens`)
+  lines.push(`config ${configPath()}`)
+  return lines.join("\n")
+}
+
 function formatAge(ms) {
   const value = Number(ms)
   if (!Number.isFinite(value)) return "unknown"
@@ -197,7 +225,13 @@ async function poolCatalog(context) {
 async function poolMenu(context) {
   const { models, providers } = await poolCatalog(context)
   let config = readConfig({ write: true }).config
-  let resolved = resolvePool({ models, providers, config, host: HOST })
+  let resolved = resolvePool({
+    models,
+    providers,
+    config,
+    host: HOST,
+    qualityScores: loadQualityScores({ config }),
+  })
 
   if (resolved.pool.length > 0) {
     await show(context, poolLines(config, models, providers))
@@ -450,9 +484,14 @@ async function openMenu(context) {
       title: "OpenCode Router  ·  arrows move  ·  enter select",
       options: [
         { title: "Status", value: "status", description: "State, judge, pool, pins, and the last decision" },
-        { title: "Policy", value: "policy", description: "Cost / quality / latency; clears pins when changed" },
+        {
+          title: "Policy",
+          value: "policy",
+          description: "Cost / quality / latency or custom weights; clears pins when changed",
+        },
         { title: "Pin mode", value: "pin-mode", description: "Cache, balanced, or switch every turn" },
         { title: "Pool", value: "pool", description: "Models available to the router and how to edit them" },
+        { title: "Pricing", value: "pricing", description: "Input/output/cache prices for the pool" },
         { title: "Quality scores", value: "quality", description: "LMArena score source, cache age, and refresh" },
         { title: "Timing", value: "timing", description: "Local judge vs remote model vs tool time" },
         { title: "History", value: "history", description: "Recent per-turn decisions, including subagents" },
@@ -599,6 +638,11 @@ async function runCommand(context, input) {
     }
     case "pool": {
       await poolMenu(context)
+      return
+    }
+    case "pricing": {
+      const { models, providers } = await poolCatalog(context)
+      await show(context, pricingLines(config, models, providers))
       return
     }
     case "quality": {
@@ -776,6 +820,7 @@ async function runCommand(context, input) {
           "/router on | off",
           "/router policy [cost|quality|latency]",
           "/router policy custom",
+          "/router pricing",
           "/router pin-mode [cache|balanced|switch]",
           "/router pool",
           "/router quality [refresh]",
