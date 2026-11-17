@@ -5,10 +5,12 @@ import path from "node:path"
 
 import { resolvePool } from "../src/pool.js"
 import {
+  buildEpochScores,
   buildScores,
   loadQualityScores,
   modelKeys,
   normalizeModelName,
+  parseCsv,
   qualityCacheAgeMs,
   qualityCachePath,
   qualityForModel,
@@ -140,8 +142,15 @@ test("a failed refresh keeps the existing cache", async () => {
     env,
   )
   const fetchImpl = async () => new Response("nope", { status: 503 })
-  await expect(refreshQuality({ config: config(), env, fetchImpl })).rejects.toThrow("HTTP 503")
-  expect(readQualityCache(env).scores.a.quality).toBe(0.5)
+  const cache = await refreshQuality({ config: config(), env, fetchImpl })
+  expect(cache.scores.a.quality).toBe(0.5)
+  expect(readQualityCache(env).sources.lmarena.scores.a.quality).toBe(0.5)
+})
+
+test("a failed first refresh throws", async () => {
+  const { env } = tempEnv()
+  const fetchImpl = async () => new Response("nope", { status: 503 })
+  await expect(refreshQuality({ config: config(), env, fetchImpl })).rejects.toThrow("quality refresh failed")
 })
 
 test("manual quality disables fetching and scoring", async () => {
@@ -174,7 +183,7 @@ test("pool resolution uses lmarena scores unless an override exists", () => {
     providers: [],
     config: settings,
     env,
-    qualityScores: { deepseekflash: { quality: 0.88, rank: 2, model: "DeepSeek Flash" } },
+    qualityScores: { deepseekflash: { quality: 0.88, rank: 2, model: "DeepSeek Flash", source: "lmarena" } },
   })
   expect(scored.pool[0].qualityOverride).toBe(0.88)
   expect(scored.pool[0].qualitySource).toBe("lmarena")
@@ -188,4 +197,90 @@ test("pool resolution uses lmarena scores unless an override exists", () => {
   })
   expect(overridden.pool[0].qualityOverride).toBe(0.5)
   expect(overridden.pool[0].qualitySource).toBe("override")
+})
+
+function text(body) {
+  return new Response(body, { status: 200, headers: { "content-type": "text/csv" } })
+}
+
+test("the CSV parser handles quoted commas and newlines", () => {
+  const rows = parseCsv('a,b\n"x, y","line\nbreak"\n')
+  expect(rows).toEqual([{ a: "x, y", b: "line\nbreak" }])
+})
+
+test("Epoch prefers coding rows and falls back to ECI", () => {
+  const eciCsv = "Model,Display name,eci\nModel A,Model A,100\nModel B,Model B,150\nModel C,Model C,50\n"
+  const benchmarksCsv =
+    "task,model,Model,mean_score\nSWE-Bench verified,b,Model B,0.7\nMirrorCode,c,Model C,0.3\n"
+  const cache = buildEpochScores({ eciCsv, benchmarksCsv })
+  expect(cache.source).toBe("epoch")
+  expect(cache.scores.modelb.quality).toBe(0.97)
+  expect(cache.scores.modelb.metric).toBe("coding")
+  expect(cache.scores.modelc.quality).toBe(0.35)
+  expect(cache.scores.modela.quality).toBe(0.66)
+})
+
+test("auto merges sources by priority", () => {
+  const { env } = tempEnv()
+  const now = Date.now()
+  writeQualityCache(
+    {
+      source: "auto",
+      fetchedAt: now,
+      count: 2,
+      scores: {},
+      sources: {
+        epoch: {
+          source: "epoch",
+          fetchedAt: now,
+          count: 1,
+          scores: { shared: { quality: 0.9, source: "epoch" } },
+        },
+        lmarena: {
+          source: "lmarena",
+          fetchedAt: now,
+          count: 2,
+          scores: {
+            shared: { quality: 0.5, source: "lmarena" },
+            onlylmarena: { quality: 0.6, source: "lmarena" },
+          },
+        },
+      },
+    },
+    env,
+  )
+  const auto = config({ source: "auto", sources: ["epoch", "lmarena"] })
+  const scores = loadQualityScores({ config: auto, env })
+  expect(scores.shared.quality).toBe(0.9)
+  expect(scores.shared.source).toBe("epoch")
+  expect(scores.onlylmarena.quality).toBe(0.6)
+
+  const flipped = loadQualityScores({ config: config({ source: "auto", sources: ["lmarena", "epoch"] }), env })
+  expect(flipped.shared.quality).toBe(0.5)
+})
+
+test("auto refresh fetches Epoch and LMArena", async () => {
+  const { env } = tempEnv()
+  const fetchImpl = async (url) => {
+    if (url.includes("eci_scores.csv")) {
+      return text("Model,Display name,eci\nModel A,Model A,100\nModel B,Model B,150\n")
+    }
+    if (url.includes("benchmarks.csv")) {
+      return text("task,model,Model,mean_score\nSWE-Bench verified,b,Model B,0.7\n")
+    }
+    return json({
+      num_rows_total: 2,
+      rows: [{ row: row("Model A", 1) }, { row: row("Model B", 2) }],
+    })
+  }
+  const cache = await refreshQuality({
+    config: config({ source: "auto", sources: ["epoch", "lmarena"], timeoutMs: 1000 }),
+    env,
+    fetchImpl,
+  })
+  expect(cache.sources.epoch.count).toBe(2)
+  expect(cache.sources.lmarena.count).toBe(2)
+  expect(cache.scores.modelb.source).toBe("epoch")
+  expect(cache.scores.modelb.metric).toBe("coding")
+  expect(cache.scores.modela.source).toBe("epoch")
 })

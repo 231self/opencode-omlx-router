@@ -192,7 +192,7 @@ export function resolvePool({
       reasoning: hasReasoning(model),
       status: model.status ?? "active",
       qualityOverride: manual ?? scored?.quality ?? null,
-      qualitySource: manual != null ? "override" : scored ? "lmarena" : null,
+      qualitySource: manual != null ? "override" : scored ? scored.source ?? "scores" : null,
       latencyOverrideMs: config?.latency?.overrides?.[qualityKey] ?? null,
     }
   })

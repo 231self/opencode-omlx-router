@@ -127,7 +127,16 @@ export async function collectDebug({
     quality: {
       source: qualitySource(config),
       cache: cache
-        ? { config: cache.config, count: cache.count, ageMs: qualityCacheAgeMs(cache) }
+        ? {
+            count: cache.count,
+            ageMs: qualityCacheAgeMs(cache),
+            sources: Object.fromEntries(
+              Object.entries(cache.sources ?? {}).map(([name, entry]) => [
+                name,
+                { count: entry.count, ageMs: qualityCacheAgeMs(entry) },
+              ]),
+            ),
+          }
         : null,
     },
     config: digest,
@@ -179,11 +188,14 @@ export function formatDebug(info) {
 
 function qualityLine(quality) {
   if (!quality) return "unknown"
-  if (quality.source !== "lmarena") return "manual overrides"
-  if (!quality.cache) return "lmarena · cache empty; run /router quality refresh"
+  if (quality.source === "manual") return "manual overrides"
+  if (!quality.cache) return `${quality.source} · cache empty; run /router quality refresh`
+  const parts = Object.entries(quality.cache.sources ?? {}).map(
+    ([name, entry]) => `${name} ${entry.count}`,
+  )
   const minutes = Math.floor((Number(quality.cache.ageMs) || 0) / 60_000)
   const age = minutes < 60 ? `${minutes}m` : `${Math.floor(minutes / 60)}h`
-  return `lmarena · ${quality.cache.count} models · ${age} old`
+  return `${quality.source} · ${parts.join(" + ") || `${quality.cache.count} models`} · ${age} old`
 }
 
 function judgeLine(judge) {

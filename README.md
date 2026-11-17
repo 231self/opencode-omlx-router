@@ -529,27 +529,39 @@ you have a real measurement.
 
 ## Quality scores
 
-Quality comes from the public LMArena leaderboard dataset by default, with no
-API key:
+Quality comes from two public datasets by default, with no API key:
 
-- Code Arena subset (`webdev`), fetched from the Hugging Face datasets server.
-- Cached for 24 hours at `~/.local/state/omlx-router/quality.json`.
-- Rank percentile maps to 0..1: rank 1 is 0.97, the last entry 0.35.
-- `quality.overrides` always win. Unmatched models keep the heuristic or the
-  local size tier.
-- Local models are matched when the leaderboard has them.
+1. **Epoch AI** — SWE-bench Verified or MirrorCode when the model is tracked,
+   otherwise the Epoch Capabilities Index (ECI).
+2. **LMArena** — the Code Arena (`webdev`) leaderboard.
+
+Both are fetched from public endpoints, normalised into the same 0.35–0.97
+band, and cached for 24 hours at `~/.local/state/omlx-router/quality.json`.
+Source priority is configurable. `quality.overrides` always win; unmatched
+models keep the heuristic or the local size tier.
+
+```jsonc
+{
+  "quality": {
+    "source": "auto",                    // auto | epoch | lmarena | manual
+    "sources": ["epoch", "lmarena"],     // first match wins
+    "refreshHours": 24
+  }
+}
+```
 
 ```sh
 omlx-router quality refresh     # fetch now
-omlx-router quality status      # cache age and size
+omlx-router quality status      # per-source counts and age
 ```
 
 In the TUI: `/router quality` and `/router quality refresh`. `/router pool`
-shows the score used for each model.
+shows the score and its source for each model.
 
-Set `"quality": { "source": "manual" }` to turn the fetch off. The dataset is
-[CC-BY-4.0](https://huggingface.co/datasets/lmarena-ai/leaderboard-dataset);
-attribution to LMArena is required and kept here.
+Set `"quality": { "source": "manual" }` to turn the fetch off. Epoch AI data is
+[CC-BY](https://epoch.ai/benchmarks/use-this-data); LMArena is
+[CC-BY-4.0](https://huggingface.co/datasets/lmarena-ai/leaderboard-dataset).
+Attribution to both is kept here.
 
 ## Benchmarks
 
@@ -653,7 +665,8 @@ Full example: [`config.example.json`](config.example.json).
 
   "quality": {
     "overrides": {},                      // {"provider/model": 0.0..1.0} wins
-    "source": "lmarena",                  // lmarena | manual
+    "source": "auto",                     // auto | epoch | lmarena | manual
+    "sources": ["epoch", "lmarena"],      // first match wins
     "refreshHours": 24
   },
   "latency": { "overrides": {}, "localProviders": [] },
@@ -767,9 +780,9 @@ use the `omlx-router` CLI and `config.json`.
 - The only text that leaves the machine is the truncated turn summary in the
   judge request, sent to the `judge.baseURL` you configure (localhost by
   default).
-- When `quality.source` is `lmarena`, the plugin fetches the public LMArena
-  dataset from Hugging Face. That request contains no prompts, files, or local
-  paths; set `quality.source` to `manual` to disable it.
+- When quality scores are enabled, the plugin fetches public datasets from
+  Epoch AI and Hugging Face (LMArena). Those requests contain no prompts,
+  files, or local paths; set `quality.source` to `manual` to disable them.
 - API keys are read from your config/env and never logged. The oMLX admin key
   may be read from the local `~/.omlx/settings.json` (when allowed) solely for
   the local download login.

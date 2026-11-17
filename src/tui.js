@@ -606,7 +606,8 @@ async function runCommand(context, input) {
       if (action === "refresh") {
         try {
           const cache = await refreshQuality({ config })
-          await show(context, `LMArena · ${cache.count} models · refreshed`)
+          const names = Object.keys(cache.sources ?? {}).join(" + ")
+          await show(context, `quality refreshed · ${cache.count} models (${names || "none"})`)
         } catch (error) {
           await show(context, `quality refresh failed: ${error?.message ?? error}`)
         }
@@ -618,15 +619,13 @@ async function runCommand(context, input) {
         await show(context, `source   ${source}\ncache    none\nrun /router quality refresh`)
         return
       }
-      await show(
-        context,
-        [
-          `source   ${cache.source} · ${cache.config}`,
-          `models   ${cache.count}`,
-          `age      ${formatAge(qualityCacheAgeMs(cache))}`,
-          `cache    ${qualityCachePath()}`,
-        ].join("\n"),
-      )
+      const lines = [`source   ${cache.source}`]
+      for (const [name, entry] of Object.entries(cache.sources ?? {})) {
+        lines.push(`${name.padEnd(8)} ${entry.count} models · ${formatAge(qualityCacheAgeMs(entry))} old`)
+      }
+      lines.push(`models   ${cache.count}`)
+      lines.push(`cache    ${qualityCachePath()}`)
+      await show(context, lines.join("\n"))
       return
     }
     case "history": {

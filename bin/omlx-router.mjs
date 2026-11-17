@@ -376,7 +376,8 @@ async function qualityCommand() {
   if (action === "refresh") {
     try {
       const cache = await refreshQuality({ config })
-      console.log(`refreshed LMArena ${cache.config} · ${cache.count} models`)
+      const names = Object.keys(cache.sources ?? {}).join(" + ")
+      console.log(`refreshed ${cache.source}${names ? ` (${names})` : ""} · ${cache.count} models`)
       console.log(`cache ${qualityCachePath()}`)
     } catch (error) {
       console.error(`quality refresh failed: ${error?.message ?? error}`)
@@ -391,11 +392,11 @@ async function qualityCommand() {
     console.log("cache  none; run: omlx-router quality refresh")
     return
   }
-  const age = qualityCacheAgeMs(cache)
-  const minutes = Math.floor((Number(age) || 0) / 60_000)
-  console.log(`config ${cache.config}`)
+  for (const [name, entry] of Object.entries(cache.sources ?? {})) {
+    const minutes = Math.floor((Number(qualityCacheAgeMs(entry)) || 0) / 60_000)
+    console.log(`${name.padEnd(7)} ${entry.count} models · ${minutes < 60 ? `${minutes}m` : `${Math.floor(minutes / 60)}h`} old`)
+  }
   console.log(`models ${cache.count}`)
-  console.log(`age    ${minutes < 60 ? `${minutes}m` : `${Math.floor(minutes / 60)}h`}`)
   console.log(`cache  ${qualityCachePath()}`)
 }
 

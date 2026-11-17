@@ -90,8 +90,9 @@ test("local providers are zero-cost by default", () => {
   expect(DEFAULT_CONFIG.pool.localCostZero).toBe(true)
 })
 
-test("quality scores use the keyless LMArena source by default", () => {
-  expect(DEFAULT_CONFIG.quality.source).toBe("lmarena")
+test("quality scores use keyless Epoch and LMArena sources by default", () => {
+  expect(DEFAULT_CONFIG.quality.source).toBe("auto")
+  expect(DEFAULT_CONFIG.quality.sources).toEqual(["epoch", "lmarena"])
   expect(DEFAULT_CONFIG.quality.refreshHours).toBe(24)
 })
 

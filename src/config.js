@@ -63,14 +63,19 @@ export const DEFAULT_CONFIG = {
   },
   quality: {
     overrides: {},
-    source: "lmarena",
-    category: "webdev",
+    source: "auto",
+    sources: ["epoch", "lmarena"],
     refreshHours: 24,
-    timeoutMs: 10000,
+    timeoutMs: 20000,
     lmarena: {
       dataset: "lmarena-ai/leaderboard-dataset",
       config: "webdev",
       split: "latest",
+    },
+    epoch: {
+      eciURL: "https://epoch.ai/data/eci_scores.csv",
+      benchmarksURL: "https://epoch.ai/data/benchmarks.csv",
+      coding: true,
     },
   },
   latency: { overrides: {}, localProviders: [] },

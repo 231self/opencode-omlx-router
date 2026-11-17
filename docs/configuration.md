@@ -177,21 +177,24 @@ are not treated as provider failures.
 
 | Key | Default | Notes |
 |---|---|---|
-| `source` | `"lmarena"` | `lmarena` fetches public scores; `manual` uses overrides and heuristics |
-| `category` | `"webdev"` | LMArena subset; `webdev` is the Code Arena |
+| `source` | `"auto"` | `auto`, `epoch`, `lmarena`, or `manual` |
+| `sources` | `["epoch", "lmarena"]` | Priority order used by `auto` |
 | `refreshHours` | `24` | Cache age before a background refresh |
-| `timeoutMs` | `10000` | Dataset request timeout |
+| `timeoutMs` | `20000` | Dataset request timeout |
 | `lmarena.dataset` | `lmarena-ai/leaderboard-dataset` | Public dataset |
-| `lmarena.config` | `webdev` | Dataset configuration |
+| `lmarena.config` | `webdev` | Code Arena subset |
 | `lmarena.split` | `latest` | Leaderboard snapshot |
+| `epoch.eciURL` | `https://epoch.ai/data/eci_scores.csv` | Epoch capability index |
+| `epoch.benchmarksURL` | `https://epoch.ai/data/benchmarks.csv` | Coding benchmark rows |
+| `epoch.coding` | `true` | Prefer SWE-bench Verified / MirrorCode over ECI |
 | `overrides` | `{}` | Manual `provider/modelID` scores; always win |
 
-Scores come from the public LMArena dataset (CC-BY-4.0). The adapter fetches it
-from the Hugging Face datasets server once per refresh, caches it at
-`~/.local/state/omlx-router/quality.json`, and maps the Code Arena rank onto the
-router's 0..1 quality scale (best 0.97, last 0.35). Unmatched models keep the
-heuristic; check `/router quality` for the cache age and `/router pool` for the
-score used per model.
+Epoch is read first: SWE-bench Verified or MirrorCode when the model has a
+coding row, otherwise its ECI. LMArena Code Arena fills the rest. Each source is
+normalised into the same 0.35–0.97 band, cached at
+`~/.local/state/omlx-router/quality.json`, and merged by `sources` order.
+Unmatched models keep the heuristic. `/router quality` shows per-source counts
+and age; `/router pool` shows the source used per model.
 
 ```jsonc
 {
