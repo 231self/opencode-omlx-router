@@ -143,7 +143,7 @@ and `opencode-model-router history` for visibility.
 ### From a git checkout (works before npm publish)
 
 ```sh
-git clone https://github.com/231self/opencode-omlx-router
+git clone https://github.com/231self/opencode-router
 cd opencode-router
 bun install
 bun run build:wasm

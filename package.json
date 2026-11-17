@@ -7,11 +7,11 @@
   "author": "231self",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/231self/opencode-omlx-router.git"
+    "url": "git+https://github.com/231self/opencode-router.git"
   },
-  "homepage": "https://github.com/231self/opencode-omlx-router#readme",
+  "homepage": "https://github.com/231self/opencode-router#readme",
   "bugs": {
-    "url": "https://github.com/231self/opencode-omlx-router/issues"
+    "url": "https://github.com/231self/opencode-router/issues"
   },
   "exports": {
     ".": "./src/index.js",

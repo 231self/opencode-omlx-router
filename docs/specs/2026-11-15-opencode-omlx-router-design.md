@@ -2,7 +2,7 @@
 
 - Status: approved design, pre-implementation
 - Date: 2026-11-15
-- Repository: https://github.com/231self/opencode-omlx-router
+- Repository: https://github.com/231self/opencode-router
 - License: Apache-2.0
 
 ## 1. Problem and goals

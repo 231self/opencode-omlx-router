@@ -9,7 +9,7 @@ one-line question doesn't cost frontier tokens, and a hard refactor doesn't run 
 a model that will fail it.
 
 [![npm](https://img.shields.io/npm/v/@231self/opencode-router?color=3b82f6&label=npm)](https://www.npmjs.com/package/@231self/opencode-router)
-[![ci](https://github.com/231self/opencode-omlx-router/actions/workflows/ci.yml/badge.svg)](https://github.com/231self/opencode-omlx-router/actions/workflows/ci.yml)
+[![ci](https://github.com/231self/opencode-router/actions/workflows/ci.yml/badge.svg)](https://github.com/231self/opencode-router/actions/workflows/ci.yml)
 [![license](https://img.shields.io/badge/license-Apache--2.0-22c55e)](LICENSE)
 [![node](https://img.shields.io/badge/node-%E2%89%A522-111827)](https://nodejs.org)
 
@@ -118,8 +118,8 @@ kilo plugin @231self/opencode-router
 ### From a checkout (development)
 
 ```sh
-git clone https://github.com/231self/opencode-omlx-router
-cd opencode-omlx-router
+git clone https://github.com/231self/opencode-router
+cd opencode-router
 bun install
 bun run build:wasm       # needs Rust with wasm32-unknown-unknown
 ```
