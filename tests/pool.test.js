@@ -192,3 +192,69 @@ test("glob matching is anchored and case-insensitive", () => {
   expect(matchesGlob("deepseek", "deepseek/deepseek-flash")).toBe(false)
   expect(matchesGlob("DEEPSEEK/*", "deepseek/deepseek-flash")).toBe(true)
 })
+
+test("the pricing table fills host gaps without overriding real prices", () => {
+  const env = envWithFavorites([
+    { providerID: "anthropic", modelID: "claude-opus-5-5" },
+    { providerID: "openai", modelID: "gpt-6.1-sol" },
+    { providerID: "deepseek", modelID: "deepseek-flash" },
+    { providerID: "acme", modelID: "mystery" },
+  ])
+  const capabilities = { tools: true, input: ["text"], output: ["text"] }
+  const models = [
+    {
+      providerID: "anthropic",
+      id: "claude-opus-5-5",
+      type: "chat",
+      settings: { baseURL: "https://api.anthropic.com" },
+      cost: [{ input: 0, output: 0, cache: { read: 0, write: 0 } }],
+      limit: { context: 200000, output: 8192 },
+      capabilities,
+      status: "active",
+    },
+    {
+      providerID: "openai",
+      id: "gpt-6.1-sol",
+      type: "chat",
+      settings: { baseURL: "https://api.openai.com" },
+      cost: [],
+      limit: { context: 400000, output: 128000 },
+      capabilities,
+      status: "active",
+    },
+    {
+      providerID: "acme",
+      id: "mystery",
+      type: "chat",
+      cost: [],
+      limit: { context: 128000, output: 8192 },
+      capabilities,
+      status: "active",
+    },
+    catalog()[0],
+  ]
+  const prices = {
+    prices: {
+      "anthropic/claude-opus-5-5": [{ input: 4, output: 20, cache: { read: 0.2, write: 5 } }],
+    },
+    byId: {
+      gpt61sol: [{ input: 2, output: 10, cache: { read: 0.1, write: undefined } }],
+    },
+  }
+  const { pool } = resolvePool({ models, config: config(), env, prices })
+  const byId = Object.fromEntries(pool.map((model) => [model.modelID, model]))
+
+  expect(byId["claude-opus-5-5"].cost[0]).toMatchObject({ input: 4, output: 20 })
+  expect(byId["claude-opus-5-5"].costSource).toBe("modelsdev")
+
+  expect(byId["gpt-6.1-sol"].cost[0]).toMatchObject({ input: 2, output: 10 })
+  expect(byId["gpt-6.1-sol"].costSource).toBe("modelsdev")
+
+  // A model the host prices correctly keeps its own numbers.
+  expect(byId["deepseek-flash"].cost[0]).toMatchObject({ input: 0.2, output: 0.8 })
+  expect(byId["deepseek-flash"].costSource).toBe("catalog")
+
+  // No price anywhere is reported as unknown rather than zero.
+  expect(byId.mystery.cost).toEqual([])
+  expect(byId.mystery.costSource).toBe("unknown")
+})

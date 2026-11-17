@@ -6,6 +6,7 @@ import path from "node:path"
 import tui from "../src/tui.js"
 import { readConfig, saveConfig } from "../src/config.js"
 import { writeQualityCache } from "../src/quality.js"
+import { writePricingCache } from "../src/pricing.js"
 import { appendDecision, appendTurn, listPins, sessionHash, writePin } from "../src/state.js"
 
 function environment() {
@@ -18,16 +19,8 @@ function environment() {
   return { dir }
 }
 
-function fakeContext() {
-  let layer
-  const messages = []
-  const handlers = {}
-  const synced = []
-  let confirmAnswer = true
-  let promptAnswer = ""
-  let selectAnswers = []
-  let lastOptions = []
-  const models = [
+function defaultModels() {
+  return [
     {
       providerID: "deepseek",
       id: "deepseek-flash",
@@ -39,6 +32,17 @@ function fakeContext() {
       status: "active",
     },
   ]
+}
+
+function fakeContext(models = defaultModels()) {
+  let layer
+  const messages = []
+  const handlers = {}
+  const synced = []
+  let confirmAnswer = true
+  let promptAnswer = ""
+  let selectAnswers = []
+  let lastOptions = []
   const context = {
     location: { directory: "/tmp" },
     ui: {
@@ -179,6 +183,81 @@ test("/router pricing lists per-model token prices", async () => {
   expect(alert.message).toContain("deepseek/deepseek-flash")
   expect(alert.message).toContain("in $0.2")
   expect(alert.message).toContain("out $0.8")
+  expect(alert.message).toContain("cache read $0.05")
+})
+
+test("/router pricing fills host gaps from the table and never invents $0", async () => {
+  environment()
+  const { config } = readConfig({ write: true })
+  saveConfig({
+    ...config,
+    pool: {
+      ...config.pool,
+      source: "list",
+      models: [
+        "anthropic/claude-opus-5-5",
+        "openai/gpt-6.1-sol",
+        "deepseek/deepseek-flash",
+        "acme/mystery",
+      ],
+    },
+  })
+  writePricingCache({
+    source: "modelsdev",
+    fetchedAt: Date.now(),
+    count: 2,
+    prices: {
+      "anthropic/claude-opus-5-5": [{ input: 4, output: 20, cache: { read: 0.2, write: 5 } }],
+    },
+    byId: { gpt61sol: [{ input: 2, output: 10, cache: { read: 0.1, write: undefined } }] },
+    sources: {
+      modelsdev: { url: "https://models.dev/api.json", fetchedAt: Date.now(), count: 2 },
+    },
+  })
+  const capabilities = { tools: true, input: ["text"], output: ["text"] }
+  const models = [
+    {
+      providerID: "anthropic",
+      id: "claude-opus-5-5",
+      type: "chat",
+      cost: [{ input: 0, output: 0, cache: { read: 0, write: 0 } }],
+      limit: { context: 200000, output: 8192 },
+      capabilities,
+      status: "active",
+    },
+    {
+      providerID: "openai",
+      id: "gpt-6.1-sol",
+      type: "chat",
+      cost: [],
+      limit: { context: 400000, output: 128000 },
+      capabilities,
+      status: "active",
+    },
+    {
+      providerID: "acme",
+      id: "mystery",
+      type: "chat",
+      cost: [],
+      limit: { context: 128000, output: 8192 },
+      capabilities,
+      status: "active",
+    },
+    ...defaultModels(),
+  ]
+  const { context, messages, command } = fakeContext(models)
+  tui.setup(context)
+  await command().run("pricing")
+  const alert = messages.find((entry) => entry.kind === "alert")
+  expect(alert.message).toContain(
+    "anthropic/claude-opus-5-5  in $4 · out $20 · cache read $0.2 /M (models.dev)",
+  )
+  expect(alert.message).toContain(
+    "openai/gpt-6.1-sol  in $2 · out $10 · cache read $0.1 /M (models.dev)",
+  )
+  expect(alert.message).toContain("deepseek/deepseek-flash  in $0.2 · out $0.8 · cache read $0.05 /M")
+  expect(alert.message).toContain("acme/mystery  unknown (no pricing data)")
+  expect(alert.message).toContain("prices  2 models · modelsdev")
 })
 
 test("/router quality reports the cached score source", async () => {

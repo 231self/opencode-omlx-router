@@ -118,8 +118,8 @@ export function provisionHint(config) {
     "",
     "For llama.cpp:",
     "  llama-server -m Qwen3-4B-Instruct-2507-Q4_K_M.gguf --port 8080",
-    `  omlx-router config set judge.baseURL http://127.0.0.1:8080/v1`,
-    `  omlx-router config set judge.model auto`,
+    `  opencode-model-router config set judge.baseURL http://127.0.0.1:8080/v1`,
+    `  opencode-model-router config set judge.model auto`,
     "",
     `Current judge endpoint: ${base}`,
   ].join("\n")

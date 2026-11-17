@@ -9,6 +9,7 @@ import {
   provisionHint,
 } from "./provision.js"
 import { readHostModelState, resolvePool } from "./pool.js"
+import { loadPricing, refreshPricing } from "./pricing.js"
 import {
   loadQualityScores,
   qualityCacheAgeMs,
@@ -122,6 +123,7 @@ function poolLines(config, models, providers) {
     config,
     host: HOST,
     qualityScores: loadQualityScores({ config }),
+    prices: loadPricing({ config }),
   })
   const lines = [`source ${resolved.source} · ${resolved.pool.length} usable · ${resolved.candidates} available`]
   for (const model of resolved.pool) {
@@ -129,11 +131,15 @@ function poolLines(config, models, providers) {
       model.qualityOverride != null
         ? `${Number(model.qualityOverride).toFixed(2)}${model.qualitySource ? ` (${model.qualitySource})` : ""}`
         : "auto"
+    const free = model.local && config.pool.localCostZero !== false
+    const cost = free
+      ? "free (local)"
+      : `${formatCost(model.cost)}${model.costSource === "modelsdev" ? " (models.dev)" : ""}`
     lines.push(
       [
         `${model.providerID}/${model.modelID}${model.variant && model.variant !== "default" ? `#${model.variant}` : ""}`,
         `ctx=${model.limit.context}`,
-        `cost=${model.local && config.pool.localCostZero !== false ? "free (local)" : formatCost(model.cost)}`,
+        `cost=${cost}`,
         `local=${model.local ? "yes" : "no"}`,
         `quality=${quality}`,
       ].join(" · "),
@@ -142,8 +148,8 @@ function poolLines(config, models, providers) {
   for (const warning of resolved.warnings) lines.push(`warning: ${warning}`)
   lines.push("")
   lines.push(`config ${configPath()}`)
-  lines.push("set models: omlx-router config set pool.source list")
-  lines.push(`            omlx-router config set pool.models '["provider/model", "..."]'`)
+  lines.push("set models: opencode-model-router config set pool.source list")
+  lines.push(`            opencode-model-router config set pool.models '["provider/model", "..."]'`)
   return lines.join("\n")
 }
 
@@ -154,16 +160,12 @@ function pricingLines(config, models, providers) {
     config,
     host: HOST,
     qualityScores: loadQualityScores({ config }),
+    prices: loadPricing({ config }),
   })
   const lines = []
   for (const model of resolved.pool) {
-    const tier = Array.isArray(model.cost) ? model.cost[0] : null
     const localFree = model.local && config.pool.localCostZero !== false
-    const price = localFree
-      ? "free (local)"
-      : tier
-        ? `in $${tier.input} · out $${tier.output} · cache read $${tier.cache?.read ?? 0} /M`
-        : "unknown"
+    const price = localFree ? "free (local)" : priceText(model.cost, model.costSource)
     lines.push(
       `${model.providerID}/${model.modelID}${model.variant && model.variant !== "default" ? `#${model.variant}` : ""}  ${price}`,
     )
@@ -171,6 +173,12 @@ function pricingLines(config, models, providers) {
   if (lines.length === 0) lines.push("no models selected; run /router pool")
   lines.push("")
   lines.push(`source ${resolved.source} · ${resolved.pool.length} models · per million tokens`)
+  const cache = loadPricing({ config })
+  lines.push(
+    cache
+      ? `prices  ${cache.count} models · ${cache.source} · ${formatAge(Date.now() - Number(cache.fetchedAt ?? 0))} old`
+      : "prices  none · run /router pricing refresh",
+  )
   lines.push(`config ${configPath()}`)
   return lines.join("\n")
 }
@@ -185,10 +193,30 @@ function formatAge(ms) {
   return `${Math.floor(hours / 24)}d`
 }
 
+/** A single price: `$0.15`, or `?` when the source has no value for it. */
+function money(value) {
+  return value === undefined || value === null ? "?" : `$${value}`
+}
+
+/**
+ * Token prices for one pool model. Missing prices read as `unknown` rather
+ * than `$0`, and the source is named when it is not the host catalog.
+ */
+function priceText(cost, source) {
+  const tier = Array.isArray(cost) ? cost[0] : null
+  const parts = []
+  if (tier?.input !== undefined) parts.push(`in $${tier.input}`)
+  if (tier?.output !== undefined) parts.push(`out $${tier.output}`)
+  if (tier?.cache?.read !== undefined) parts.push(`cache read $${tier.cache.read}`)
+  if (parts.length === 0) return "unknown (no pricing data)"
+  const origin = source && source !== "catalog" ? ` (${source === "modelsdev" ? "models.dev" : source})` : ""
+  return `${parts.join(" · ")} /M${origin}`
+}
+
 function formatCost(cost) {
   const tier = Array.isArray(cost) ? cost[0] : null
-  if (!tier) return "free/unknown"
-  return `$${tier.input}/$${tier.output}`
+  if (!tier || (tier.input === undefined && tier.output === undefined)) return "unknown"
+  return `${money(tier.input)}/${money(tier.output)}`
 }
 
 function explainLines(record) {
@@ -250,6 +278,7 @@ async function poolMenu(context) {
     config,
     host: HOST,
     qualityScores: loadQualityScores({ config }),
+    prices: loadPricing({ config }),
   })
 
   if (resolved.pool.length > 0) {
@@ -661,6 +690,15 @@ async function runCommand(context, input) {
       return
     }
     case "pricing": {
+      if (rest[0] === "refresh") {
+        try {
+          const cache = await refreshPricing({ config })
+          await show(context, `pricing refreshed · ${cache.count} models (${cache.source})`)
+        } catch (error) {
+          await show(context, `pricing refresh failed: ${error?.message ?? error}`)
+        }
+        return
+      }
       const { models, providers } = await poolCatalog(context)
       await show(context, pricingLines(config, models, providers))
       return
@@ -871,7 +909,7 @@ async function runCommand(context, input) {
           "/router on | off",
           "/router policy [cost|quality|latency]",
           "/router policy custom",
-          "/router pricing",
+          "/router pricing [refresh]",
           "/router pin-mode [cache|balanced|switch]",
           "/router pool",
           "/router quality [refresh]",

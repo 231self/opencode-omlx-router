@@ -10,6 +10,19 @@
 - Failover handles payment and quota failures (HTTP 402, insufficient
   credits/balance, usage limits) and blocks the whole provider for auth, billing,
   or quota errors. Rate limits and server errors still block only the model.
+- Pricing fallback: when the host catalog has no price, the router reads the
+  public models.dev and LiteLLM tables (no access token) and caches them for 24
+  hours. `/router pricing refresh`, `opencode-model-router pricing`, and
+  `opencode-model-router pricing provider/model` manage the table; `pricing`
+  config controls the sources.
+
+### Fixed
+
+- Cost parsing accepts every shape the hosts emit: catalog tier arrays,
+  models.dev's flat `{input, output, cache_read, cache_write}` with `tiers` and
+  `context_over_200k`, and the V2 client's `{text: {input: {price}}}` with
+  context overrides. A price the host leaves out stays missing, so the display
+  says `unknown` instead of `$0`, and a real zero still reads as free.
 
 ### Changed
 

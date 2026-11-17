@@ -215,6 +215,37 @@ Without a score, quality is a documented heuristic (price percentile, parameter
 size, context size, reasoning support), not a benchmark. Free local models use
 the size tiers above. Overrides are keyed `provider/modelID`.
 
+## `pricing`
+
+| Key | Default | Notes |
+|---|---|---|
+| `source` | `"modelsdev"` | `modelsdev` or `off` |
+| `sources` | `["modelsdev", "litellm"]` | Priority order; every enabled source is fetched |
+| `refreshHours` | `24` | Cache age before a background refresh |
+| `timeoutMs` | `20000` | Price table request timeout |
+| `url` | `https://models.dev/api.json` | Override for the first source |
+
+Host catalogs are incomplete: OpenCode reports `cost: []` for some providers and
+all-zero prices for others, which used to display as `$0`. When the catalog has
+no price, the router falls back to public price tables — models.dev first, then
+LiteLLM — which need no access token. Only missing or zero fields are filled, so
+first-party billing still wins when the host does report it. Prices are cached at
+`~/.local/state/omlx-router/pricing.json`.
+
+```jsonc
+{
+  "pricing": {
+    "source": "modelsdev",
+    "sources": ["modelsdev", "litellm"],
+    "refreshHours": 24
+  }
+}
+```
+
+`/router pricing` shows each pool model with its source; `/router pricing
+refresh` refetches. `opencode-model-router pricing provider/model` looks up one
+model. Set `"source": "off"` to use only what the host reports.
+
 ## `subagents`
 
 | Key | Default | Notes |

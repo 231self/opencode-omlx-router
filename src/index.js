@@ -1,6 +1,8 @@
 import { readConfig } from "./config.js"
+import { normaliseCost } from "./cost.js"
 import { VERSION } from "./version.js"
 import { Router, refOf } from "./router.js"
+import { refreshPricingIfStale } from "./pricing.js"
 import { refreshQualityIfStale } from "./quality.js"
 import { TELEMETRY_EVENTS, Telemetry } from "./telemetry.js"
 import { loadCore } from "./wasm.js"
@@ -50,6 +52,11 @@ export default {
         }
       })
     }
+    void refreshPricingIfStale({ config }).catch((cause) => {
+      if (config.debug) {
+        console.error("[omlx-router] pricing refresh failed:", String(cause?.message ?? cause))
+      }
+    })
     await register("prompt", (event) => router.prompt(event))
     await register("context", (event) => router.context(event))
     await register("compaction", (event) => router.compaction(event))
@@ -97,6 +104,9 @@ export default {
 
   async server(input) {
     const { config } = readConfig({ write: true })
+    void refreshPricingIfStale({ config }).catch(() => {
+      // Pricing is a fallback; a failed refresh must not block the plugin.
+    })
     let core = null
     try {
       core = await loadCore()
@@ -141,7 +151,7 @@ export default {
         : Object.entries(outputSet ?? {})
             .filter(([, enabled]) => enabled === true)
             .map(([kind]) => kind)
-      const cost = Array.isArray(model?.cost) ? model.cost : model?.cost ? [model.cost] : []
+      const cost = normaliseCost(model?.cost)
       const variants = Array.isArray(model?.variants)
         ? model.variants
         : Object.keys(model?.variants ?? {}).map((id) => ({ id }))

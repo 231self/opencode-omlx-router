@@ -1,6 +1,7 @@
 import { readConfig } from "./config.js"
 import { Judge } from "./judge.js"
 import { resolvePool } from "./pool.js"
+import { loadPricing } from "./pricing.js"
 import { loadQualityScores } from "./quality.js"
 import { applyPlan, buildOptimiseRequest } from "./optimiser.js"
 import {
@@ -253,6 +254,14 @@ export class Router {
     return value
   }
 
+  pricing(config) {
+    const now = Date.now()
+    if (this.pricingCache && now - this.pricingCache.at < 60_000) return this.pricingCache.value
+    const value = loadPricing({ config, env: this.env })
+    this.pricingCache = { at: now, value }
+    return value
+  }
+
   async prompt(event) {
     const promptStarted = Date.now()
     try {
@@ -283,6 +292,7 @@ export class Router {
         host: this.host,
         env: this.env,
         qualityScores: this.qualityScores(config),
+        prices: this.pricing(config),
       })
       const pool = blocked.length
         ? resolved.pool.filter(

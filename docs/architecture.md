@@ -17,6 +17,9 @@ host (OpenCode V2 / Kilo, Bun)
 | `src/index.js` | V2 `setup` + V1 `server`; loads the core, registers hooks |
 | `src/router.js` | Turn orchestration: host state → core → judge → switchModel/pin/log |
 | `src/pool.js` | Favorites/list/available resolution and filters |
+| `src/cost.js` | Cost shape normalisation, gap filling, price-source labelling |
+| `src/pricing.js` | Public price tables (models.dev, LiteLLM): fetch, cache, lookup |
+| `src/quality.js` | Epoch + LMArena score fetch, cache, and merge |
 | `src/judge.js` | oMLX model discovery, verdict call, LRU cache, probe |
 | `src/optimiser.js` | Builds optimise requests and applies pruning plans |
 | `src/config.js` / `src/state.js` | Config seeding, atomic state files |

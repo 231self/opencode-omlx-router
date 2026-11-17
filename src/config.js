@@ -79,6 +79,12 @@ export const DEFAULT_CONFIG = {
     },
   },
   latency: { overrides: {}, localProviders: [] },
+  pricing: {
+    source: "modelsdev",
+    sources: ["modelsdev", "litellm"],
+    refreshHours: 24,
+    timeoutMs: 20000,
+  },
   subagents: {
     enabled: true,
     overrideExplicitModel: false,

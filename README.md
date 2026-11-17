@@ -572,6 +572,40 @@ Set `"quality": { "source": "manual" }` to turn the fetch off. Epoch AI data is
 [CC-BY-4.0](https://huggingface.co/datasets/lmarena-ai/leaderboard-dataset).
 Attribution to both is kept here.
 
+## Pricing
+
+A model's price is read from the host catalog first, then from public price
+tables when the catalog has none. OpenCode reports `cost: []` for some providers
+and all-zero prices for others; those used to show as `$0`, and a partially
+reported price used to zero out the missing field. Missing prices now read as
+`unknown`, and the router fills real gaps from:
+
+1. **models.dev** — the same catalogue OpenCode reads, flat per-million prices.
+2. **LiteLLM** — per-token costs converted to per million.
+
+Neither needs an access token. Only missing or zero fields are filled, so
+first-party billing still wins when the host reports it. The merged table is
+cached for 24 hours at `~/.local/state/omlx-router/pricing.json`.
+
+```jsonc
+{
+  "pricing": {
+    "source": "modelsdev",                  // modelsdev | off
+    "sources": ["modelsdev", "litellm"],    // first source wins per model
+    "refreshHours": 24
+  }
+}
+```
+
+```sh
+opencode-model-router pricing refresh
+opencode-model-router pricing anthropic/claude-opus-5-5
+```
+
+In the TUI: `/router pricing` lists each pool model with its source, and
+`/router pricing refresh` refetches. Local models are marked free regardless of
+the table.
+
 ## Benchmarks
 
 Modelled costs from published per-million-token prices, decisions from the real
@@ -739,7 +773,7 @@ the CLI for headless `opencode run`/`serve`, OpenCode Desktop, and Kilo.
 | `/router policy` | Interactive picker for `cost` / `quality` / `latency`, or custom weights; clears pins |
 | `/router pin-mode` | Interactive picker for `cache` / `balanced` / `switch` |
 | `/router pool` | Interactive pool setup: favorites, explicit list, or all available; shows context, cost, and quality per model |
-| `/router pricing` | Input, output, and cache-read prices per pool model |
+| `/router pricing [refresh]` | Input, output, and cache-read prices per pool model, with the price source |
 | `/router pins [clear]` | Sessions with automatic routing state; list or clear |
 | `/router history [n]` | Recent decisions, including subagents and judge/route time |
 | `/router timing [n]` | Local judge vs remote model vs tool time per turn |
@@ -764,6 +798,7 @@ opencode-model-router version [--json]
 opencode-model-router debug [--json]
 opencode-model-router doctor
 opencode-model-router pool
+opencode-model-router pricing [refresh|provider/model]
 opencode-model-router history 20
 opencode-model-router timing 20
 opencode-model-router config get policy

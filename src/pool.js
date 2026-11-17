@@ -2,6 +2,8 @@ import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 
+import { costSource, mergeCost, normaliseCost } from "./cost.js"
+import { priceForModel } from "./pricing.js"
 import { qualityForModel } from "./quality.js"
 
 export function favoritesPath(host, env = process.env) {
@@ -53,21 +55,6 @@ function hasReasoning(model) {
   return Array.isArray(model?.variants) && model.variants.some((variant) => ["high", "medium", "low"].includes(variant?.id))
 }
 
-function normaliseCost(cost) {
-  if (!Array.isArray(cost)) return []
-  return cost
-    .filter((tier) => tier && typeof tier === "object")
-    .map((tier) => ({
-      ...(tier.tier ? { tier: { type: tier.tier.type, size: Number(tier.tier.size) || 0 } } : {}),
-      input: Number(tier.input) || 0,
-      output: Number(tier.output) || 0,
-      cache: {
-        read: Number(tier.cache?.read) || 0,
-        write: Number(tier.cache?.write) || 0,
-      },
-    }))
-}
-
 function catalogKey(model) {
   return `${model.providerID}/${model.id ?? model.modelID}`
 }
@@ -80,6 +67,7 @@ export function resolvePool({
   host = "opencode",
   env = process.env,
   qualityScores = null,
+  prices = null,
 } = {}) {
   const warnings = []
   const state = readHostModelState(host, env)
@@ -173,13 +161,17 @@ export function resolvePool({
       id,
       name: model.name,
     })
+    const catalogCost = normaliseCost(model.cost)
+    const externalCost = priceForModel(prices, { providerID: model.providerID, id, name: model.name })
+    const cost = mergeCost(catalogCost, externalCost)
     return {
       providerID: model.providerID,
       modelID: id,
       name: model.name ?? id,
       variant,
       local,
-      cost: normaliseCost(model.cost),
+      cost,
+      costSource: costSource(catalogCost, externalCost),
       limit: {
         context: Number(model.limit?.context) || 0,
         output: Number(model.limit?.output) || 0,

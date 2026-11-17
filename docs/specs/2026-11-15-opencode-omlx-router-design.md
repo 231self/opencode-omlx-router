@@ -309,6 +309,18 @@ candidate table at `pool.maxModels` (8), keep the full pool for gates/scoring.
 Defaults: `requireTools: true`, `minContext: 32000`. `pool.include` and
 `pool.exclude` accept glob patterns and are applied last.
 
+Each pool model carries a normalised cost plus a `costSource`. The host emits
+several shapes — catalog tier arrays, models.dev's flat
+`{input, output, cache_read, cache_write}` with `tiers` and
+`context_over_200k`, and the V2 client's `{text: {input: {price}}}` with context
+overrides — and OpenCode reports `cost: []` for some providers and all-zero
+prices for others. A price the host omits stays missing rather than becoming 0,
+so a display can say `unknown`; gaps are then filled from the public models.dev
+then LiteLLM tables (`pricing.sources`, no access token, cached 24 h at
+`pricing.json`). Only missing or zero fields are replaced, so first-party
+billing still wins when the host reports it. `costSource` is `catalog`,
+`modelsdev`, or `unknown`, and `pool.localCostZero` keeps loopback models free.
+
 ## 7. Judge
 
 - Discovery: `GET {baseURL}/models`, cached 60 s. `judge.model` wins; `auto`
@@ -492,6 +504,7 @@ edits work predictably.
   },
   "quality": {"overrides": {}},
   "latency": {"overrides": {}, "localProviders": []},
+  "pricing": {"source": "modelsdev", "sources": ["modelsdev", "litellm"], "refreshHours": 24},
   "subagents": {
     "enabled": true,
     "overrideExplicitModel": false,
@@ -540,6 +553,7 @@ command and a palette entry **"oMLX Router: settings"**:
 | `/router pin` / `/router auto` | Force or release a pin for the current session by writing the pin file |
 | `/router judge` | Calls oMLX directly: model, latency, sample verdict |
 | `/router subagents on\|off` | Toggle child-session routing in config |
+| `/router pricing [refresh]` | Per-pool-model token prices with their source; `refresh` refetches the public tables |
 
 The TUI part reads and writes the same config file and state files as the
 adapter, so changes take effect on the next turn via the adapter's mtime check.
@@ -548,7 +562,8 @@ never asks the server to display anything. Pin writes use the same atomic
 write path as the adapter.
 
 The CLI (`bin/omlx-router.mjs`, Bun or Node, zero dependencies) provides
-`status`, `config get|set`, `history [n]`, `doctor`, `pool`, and is the control
+`status`, `config get|set`, `history [n]`, `doctor`, `pool`, `quality`, `pricing`,
+`pins`, and is the control
 surface for Kilo, headless `opencode run`/`serve`, and OpenCode Desktop.
 
 ## 13. Telemetry and privacy

@@ -12,6 +12,7 @@ import {
   provisionHint,
 } from "../src/provision.js"
 import { readHostModelState } from "../src/pool.js"
+import { loadPricing, priceForModel, pricingCachePath, refreshPricing } from "../src/pricing.js"
 import {
   qualityCacheAgeMs,
   qualityCachePath,
@@ -57,6 +58,7 @@ Usage:
   opencode-model-router timing [n] [--json]
   opencode-model-router pool
   opencode-model-router quality [status|refresh]
+  opencode-model-router pricing [refresh|provider/model]
   opencode-model-router pins [clear] [--yes]
   opencode-model-router doctor
   opencode-model-router debug [--json]
@@ -414,6 +416,56 @@ async function doctorCommand() {
   }
 }
 
+function priceLine(tiers) {
+  const tier = Array.isArray(tiers) ? tiers[0] : null
+  if (!tier) return "unknown (no pricing data)"
+  const parts = []
+  if (tier.input !== undefined) parts.push(`in $${tier.input}`)
+  if (tier.output !== undefined) parts.push(`out $${tier.output}`)
+  if (tier.cache?.read !== undefined) parts.push(`cache read $${tier.cache.read}`)
+  return parts.length > 0 ? `${parts.join(" · ")} /M` : "unknown (no pricing data)"
+}
+
+async function pricingCommand() {
+  const action = rest[0] ?? "status"
+  const { config } = readConfig({ write: false })
+  if (action === "refresh") {
+    try {
+      const cache = await refreshPricing({ config })
+      console.log(`refreshed ${cache.source} · ${cache.count} models`)
+      console.log(`cache ${pricingCachePath()}`)
+    } catch (error) {
+      console.error(`pricing refresh failed: ${error?.message ?? error}`)
+      process.exitCode = 1
+    }
+    return
+  }
+  const cache = loadPricing({ config })
+  if (!cache) {
+    console.log("cache  none; run: opencode-model-router pricing refresh")
+    return
+  }
+  if (action !== "status") {
+    const [providerID, ...segments] = action.split("#")[0].split("/")
+    const tiers = priceForModel(cache, { providerID, id: segments.join("/") })
+    console.log(`${action}  ${priceLine(tiers)}`)
+    if (!tiers) {
+      console.log(`source ${cache.source} · no entry for this model`)
+      process.exitCode = 1
+    }
+    return
+  }
+  console.log(`source ${cache.source}`)
+  console.log(`models ${cache.count}`)
+  for (const [name, entry] of Object.entries(cache.sources ?? {})) {
+    const minutes = Math.floor(Math.max(0, Date.now() - Number(entry.fetchedAt ?? 0)) / 60_000)
+    console.log(
+      `${name.padEnd(9)} ${entry.count} models · ${minutes < 60 ? `${minutes}m` : `${Math.floor(minutes / 60)}h`} old`,
+    )
+  }
+  console.log(`cache  ${pricingCachePath()}`)
+}
+
 async function qualityCommand() {
   const action = rest[0] ?? "status"
   const { config } = readConfig({ write: false })
@@ -475,6 +527,9 @@ try {
       break
     case "quality":
       await qualityCommand()
+      break
+    case "pricing":
+      await pricingCommand()
       break
     case "pins":
       pinsCommand()
