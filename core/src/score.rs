@@ -190,6 +190,11 @@ fn price_at(model: &PoolModel, tokens: u64) -> (f64, f64, f64) {
     }
 }
 
+fn is_free_local(model: &PoolModel, settings: &Settings) -> bool {
+    model.local
+        && (settings.pool.local_cost_zero || model.cost.iter().all(|tier| price_of(tier) <= 0.0))
+}
+
 fn quality(
     model: &PoolModel,
     price_percentile: f64,
@@ -202,9 +207,18 @@ fn quality(
     {
         return clamp01(override_value);
     }
-    let free = model.cost.iter().all(|tier| price_of(tier) <= 0.0);
-    if free && model.local {
-        return 0.35;
+    if is_free_local(model, settings) {
+        // A local model's size is the only signal available without prices.
+        // Keep the tiers conservative: a 27B local model should clear routine
+        // edits, not hard debugging.
+        let size = param_billions(&format!("{} {}", model.name, model.model_id));
+        return match size {
+            Some(billions) if billions >= 30.0 => 0.72,
+            Some(billions) if billions >= 8.0 => 0.55,
+            Some(billions) if billions >= 3.0 => 0.45,
+            Some(_) => 0.35,
+            None => 0.4,
+        };
     }
     clamp01(
         0.45 * price_percentile
@@ -275,7 +289,13 @@ pub fn evaluate(pool: &[PoolModel], ctx: &ScoreContext<'_>) -> Vec<Candidate> {
 
     let prices: Vec<f64> = gated
         .iter()
-        .map(|model| model.cost.first().map_or(0.0, price_of))
+        .map(|model| {
+            if is_free_local(model, ctx.settings) {
+                0.0
+            } else {
+                model.cost.first().map_or(0.0, price_of)
+            }
+        })
         .collect();
     let contexts: Vec<f64> = gated
         .iter()
@@ -290,10 +310,18 @@ pub fn evaluate(pool: &[PoolModel], ctx: &ScoreContext<'_>) -> Vec<Candidate> {
     let joined = ctx.pin.and_then(|pin| pin.model.as_ref());
 
     let mut scored: Vec<Candidate> = Vec::new();
+    let mut near: Vec<Candidate> = Vec::new();
     let mut relaxed: Vec<Candidate> = Vec::new();
+    let tolerance = ctx.settings.limits.shortfall_tolerance;
 
     for model in &gated {
-        let price_percentile = percentile(model.cost.first().map_or(0.0, price_of), &prices);
+        let free_local = is_free_local(model, ctx.settings);
+        let own_price = if free_local {
+            0.0
+        } else {
+            model.cost.first().map_or(0.0, price_of)
+        };
+        let price_percentile = percentile(own_price, &prices);
         let context_percentile = percentile(model.limit.context as f64, &contexts);
         let quality = quality(model, price_percentile, context_percentile, ctx.settings);
 
@@ -306,7 +334,11 @@ pub fn evaluate(pool: &[PoolModel], ctx: &ScoreContext<'_>) -> Vec<Candidate> {
 
         let expected_in = ctx.envelope.estimated_input_tokens;
         let expected_out = expected_output(model, ctx);
-        let (input_price, output_price, cache_read) = price_at(model, expected_in);
+        let (input_price, output_price, cache_read) = if free_local {
+            (0.0, 0.0, 0.0)
+        } else {
+            price_at(model, expected_in)
+        };
         let cached = joined.is_some_and(|pinned| {
             pinned.same_model(&model.reference())
                 && ctx.settings.pin.cache_hit_ratio > 0.0
@@ -319,7 +351,11 @@ pub fn evaluate(pool: &[PoolModel], ctx: &ScoreContext<'_>) -> Vec<Candidate> {
         } else {
             input_tokens * input_price
         };
-        let cost_usd = (input_cost + expected_out as f64 * output_price) / 1_000_000.0;
+        let cost_usd = if free_local {
+            0.0
+        } else {
+            (input_cost + expected_out as f64 * output_price) / 1_000_000.0
+        };
 
         let shortfall = (required - quality).max(0.0);
         let penalty = shortfall * 2.5;
@@ -331,6 +367,9 @@ pub fn evaluate(pool: &[PoolModel], ctx: &ScoreContext<'_>) -> Vec<Candidate> {
                 &gated
                     .iter()
                     .map(|model| {
+                        if is_free_local(model, ctx.settings) {
+                            return 0.0;
+                        }
                         let (input_price, output_price, _) = price_at(model, expected_in);
                         (expected_in as f64 * input_price + expected_out as f64 * output_price)
                             / 1_000_000.0
@@ -356,13 +395,18 @@ pub fn evaluate(pool: &[PoolModel], ctx: &ScoreContext<'_>) -> Vec<Candidate> {
             quality,
             required,
         };
-        if shortfall > ctx.settings.limits.shortfall_tolerance {
-            relaxed.push(candidate);
-        } else {
+        if shortfall <= 1e-9 {
             scored.push(candidate);
+        } else if shortfall <= tolerance {
+            near.push(candidate);
+        } else {
+            relaxed.push(candidate);
         }
     }
 
+    if scored.is_empty() {
+        scored = near;
+    }
     if scored.is_empty() {
         scored = relaxed;
     }
@@ -423,6 +467,13 @@ mod tests {
             status: "active".to_string(),
             quality_override: quality,
             latency_override_ms: None,
+        }
+    }
+
+    fn local_model(id: &str, input: f64, output: f64, context: u64) -> PoolModel {
+        PoolModel {
+            local: true,
+            ..model(id, input, output, context, None)
         }
     }
 
@@ -574,6 +625,20 @@ mod tests {
     }
 
     #[test]
+    fn an_adequate_model_wins_over_a_near_miss() {
+        let settings = settings("cost");
+        let verdict = verdict(4);
+        let envelope = envelope();
+        let strong = model("strong", 5.0, 10.0, 100_000, Some(0.9));
+        let cheap = model("cheap", 0.1, 0.2, 100_000, Some(0.7));
+        let result = evaluate(
+            &[cheap, strong],
+            &ctx(&settings, &verdict, &envelope, "cost"),
+        );
+        assert_eq!(result[0].model.model_id, "strong");
+    }
+
+    #[test]
     fn shortfall_relaxes_instead_of_starving() {
         let settings = settings("cost");
         let verdict = verdict(5);
@@ -635,5 +700,56 @@ mod tests {
         assert!((resolved.cost - base.cost).abs() < 1e-9);
         assert!((resolved.quality - base.quality).abs() < 1e-9);
         assert!((resolved.latency - base.latency).abs() < 1e-9);
+    }
+
+    #[test]
+    fn free_local_quality_scales_with_model_size() {
+        let settings = settings("cost");
+        let verdict = verdict(2);
+        let envelope = envelope();
+        for (id, minimum) in [("tiny-1B", 0.30), ("Qwen3-4B", 0.40), ("Qwen3.8-27B", 0.55)] {
+            let result = evaluate(
+                &[local_model(id, 0.0, 0.0, 100_000)],
+                &ctx(&settings, &verdict, &envelope, "cost"),
+            );
+            assert_eq!(result.len(), 1, "{id} should pass the gates");
+            assert!(
+                result[0].quality >= minimum,
+                "{id} quality {} < {minimum}",
+                result[0].quality
+            );
+        }
+    }
+
+    #[test]
+    fn local_models_are_free_even_with_catalog_prices() {
+        let verdict = verdict(2);
+        let envelope = envelope();
+        let free_settings = settings("cost");
+        let free = evaluate(
+            &[local_model("Qwen3.8-27B", 5.0, 10.0, 100_000)],
+            &ctx(&free_settings, &verdict, &envelope, "cost"),
+        );
+        assert_eq!(free[0].cost_usd, 0.0);
+
+        let mut metered = settings("cost");
+        metered.pool.local_cost_zero = false;
+        let priced = evaluate(
+            &[local_model("Qwen3.8-27B", 5.0, 10.0, 100_000)],
+            &ctx(&metered, &verdict, &envelope, "cost"),
+        );
+        assert!(priced[0].cost_usd > 0.0);
+    }
+
+    #[test]
+    fn a_weak_local_model_is_gated_above_complexity_two() {
+        let settings = settings("cost");
+        let verdict = verdict(4);
+        let envelope = envelope();
+        let result = evaluate(
+            &[local_model("Qwen3-4B", 0.0, 0.0, 100_000)],
+            &ctx(&settings, &verdict, &envelope, "cost"),
+        );
+        assert!(result.is_empty());
     }
 }

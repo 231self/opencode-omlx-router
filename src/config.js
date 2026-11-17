@@ -17,6 +17,7 @@ export const DEFAULT_CONFIG = {
     maxModels: 8,
     requireTools: true,
     minContext: 32000,
+    localCostZero: true,
   },
   judge: {
     enabled: true,

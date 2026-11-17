@@ -69,7 +69,7 @@ const MODELS = {
     capabilities: { tools: true, input: ["text"], output: ["text"] },
     reasoning: true,
     status: "active",
-    quality: 0.8,
+    quality: 0.85,
   },
   frontier: {
     providerID: "anthropic",
@@ -83,6 +83,32 @@ const MODELS = {
     reasoning: true,
     status: "active",
     quality: 0.95,
+  },
+  local27: {
+    providerID: "omlx",
+    modelID: "Qwen3.8-27B-MLX-4bit",
+    name: "Qwen3.8 27B (local)",
+    variant: "default",
+    local: true,
+    cost: [{ input: 0, output: 0, cache: { read: 0, write: 0 } }],
+    limit: { context: 32768, output: 8192 },
+    capabilities: { tools: true, input: ["text"], output: ["text"] },
+    reasoning: true,
+    status: "active",
+    quality: 0.72,
+  },
+  local4: {
+    providerID: "omlx",
+    modelID: "Qwen3-4B-Instruct-2507-4bit",
+    name: "Qwen3 4B (local)",
+    variant: "default",
+    local: true,
+    cost: [{ input: 0, output: 0, cache: { read: 0, write: 0 } }],
+    limit: { context: 32768, output: 8192 },
+    capabilities: { tools: true, input: ["text"], output: ["text"] },
+    reasoning: false,
+    status: "active",
+    quality: 0.45,
   },
 }
 
@@ -200,7 +226,7 @@ function settings({ mode = "balanced", policy = "cost" } = {}) {
     policy,
     pool: {
       source: "list",
-      models: [label(MODELS.cheap), label(MODELS.mid), label(MODELS.frontier)],
+      models: [label(MODELS.cheap), label(MODELS.mid), label(MODELS.frontier), label(MODELS.local27), label(MODELS.local4)],
       requireTools: true,
       minContext: 32000,
     },
@@ -299,7 +325,7 @@ async function routerScenario(core, mode, { suite, overrides = {}, name = `route
         toolFailures: 0,
         turnClassHint: null,
       },
-      pool: [MODELS.cheap, MODELS.mid, MODELS.frontier].map(({ quality, ...model }) => model),
+      pool: Object.values(MODELS).map(({ quality, ...model }) => model),
       settings: config,
       pin,
       judge: { verdict: testCase.truth, cached: false, unavailable: false },
@@ -311,6 +337,14 @@ async function routerScenario(core, mode, { suite, overrides = {}, name = `route
       : current
     const key = modelKey(chosen)
     const model = Object.values(MODELS).find((entry) => label(entry) === key) ?? MODELS.cheap
+    if (process.env.BENCH_TRACE) {
+      const top = (result.decision?.top ?? []).map(
+        (entry) => `${entry.id}:${entry.score.toFixed(2)}/${entry.quality}>=${entry.required}`,
+      )
+      console.error(
+        `turn ${turn} ${testCase.id} req ${requiredQuality(testCase.truth)} q ${model.quality} pass ${passes(model, testCase.truth)} chosen ${chosen?.id} reason ${result.log?.reason ?? result.decision?.reason} top ${top.join(" ")}`,
+      )
+    }
     const switched = current ? modelKey(current) !== key : false
     if (switched) switches += 1
     cost += turnCost(model, tokens, switched ? 0 : previousTokens)
@@ -360,6 +394,8 @@ function markdown(results, suite) {
     `- \`balanced\` costs ${money(balanced.cost)} at ${passage(balanced)} quality, with ${balanced.switches} switches.`,
     `- \`cache\` costs ${money(cache.cost)} at ${passage(cache)} quality, with ${cache.switches} switches.`,
     `- \`mixed\` costs ${money(mixed.cost)} at ${passage(mixed)} quality, with ${mixed.switches} switches.`,
+    "- Local models are priced at zero and get a size-based quality: the 27B",
+    "  clears routine turns at 0.55, the 4B stays on trivial turns at 0.45.",
     switchRow.cost > balanced.cost
       ? `- The pin wins at this context size: switch pays ${money(switchRow.cost - balanced.cost)} more than balanced. Several cold prefills at ${Math.round(first / 1000)}k–${Math.round(last / 1000)}k tokens cost more than keeping the incumbent cached.`
       : `- Switching wins at this context size: switch saves ${money(balanced.cost - switchRow.cost)} against balanced. The cold prefill is cheaper than the incumbent's output price.`,
@@ -379,7 +415,7 @@ function markdown(results, suite) {
     "- Prices per million tokens: cheap 0.2/0.8, mid 2/8, frontier 8/40.",
     "- Cache assumption: 80% of the stable prefix is read from cache on turns",
     "  that keep the same model; a switch pays a cold prefill.",
-    "- Quality: cheap 0.55, mid 0.8, frontier 0.95, compared against the quality",
+    "- Quality: cheap 0.55, mid 0.85, frontier 0.95, compared against the quality",
     "  required by each recorded verdict.",
     "",
     "## Results",
@@ -424,6 +460,8 @@ async function main() {
     fixedScenario(MODELS.cheap, suite),
     fixedScenario(MODELS.mid, suite),
     fixedScenario(MODELS.frontier, suite),
+    fixedScenario(MODELS.local27, suite),
+    fixedScenario(MODELS.local4, suite),
     staticTierScenario(suite),
     await routerScenario(core, "cache", { suite }),
     await routerScenario(core, "balanced", { suite }),

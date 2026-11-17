@@ -8,6 +8,10 @@
   `policyByClass` varies the blend by turn class (`planning`, `review`,
   `trivial`, and so on). `/router policy custom` prints the active weights.
   The benchmark adds a mixed-weight scenario.
+- Local models are first-class pool members: `pool.localCostZero` prices
+  loopback providers at zero, and free local models get size-based quality
+  (under 3B 0.35, 3–8B 0.45, 8–30B 0.55, 30B+ 0.72). The benchmark includes a
+  local 27B and 4B. A free adequate model now releases a paid incumbent.
 - `judge.provision.backend` (`auto` | `omlx` | `none`): llama.cpp and other
   OpenAI-compatible judge servers are detected, and the download commands print
   a setup recipe instead of failing on the oMLX admin API.
@@ -37,6 +41,16 @@
 
 ### Fixed
 
+- A pinned model that leaves the pool (context gate, catalog change) now hands
+  over to an adequate candidate instead of the highest scorer.
+- Context size no longer raises complexity at all. The context gate and the
+  optimiser handle capacity, so routine edits at 10–200k stay on smaller
+  models instead of being routed to the frontier model.
+- Near-miss models (shortfall within `limits.shortfallTolerance`) now compete
+  only when no exact-adequate candidate exists. The tolerance is a starvation
+  fallback, not a licence to under-route.
+- A free adequate model can now release a paid incumbent; the cost-release
+  filter previously skipped zero-cost candidates.
 - A pin no longer holds an inadequate model when complexity rises gradually. The
   +2 jump rule missed a 1→2→3 climb, so a cheap incumbent could stay above the
   turn's required quality; it now releases with reason `quality-gate` and

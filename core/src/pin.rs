@@ -24,6 +24,8 @@ fn summary(candidate: &Candidate) -> CandidateSummary {
         variant: candidate.model.variant.clone(),
         score: (candidate.score * 1000.0).round() / 1000.0,
         cost_usd: (candidate.cost_usd * 1_000_000.0).round() / 1_000_000.0,
+        quality: (candidate.quality * 1000.0).round() / 1000.0,
+        required: (candidate.required * 1000.0).round() / 1000.0,
     }
 }
 
@@ -220,7 +222,17 @@ pub fn select(
             } else {
                 "first-turn".to_string()
             };
-            chosen_candidate = Some(best.clone());
+            // The pinned model may have left the pool (context gate, catalog
+            // change). Prefer a candidate that clears the requirement; on the
+            // first turn, keep the normal best-score choice.
+            chosen_candidate = Some(if incumbent_ref.is_some() {
+                choose(candidates, mode, |candidate| {
+                    candidate.quality + 1e-9 >= candidate.required
+                })
+                .unwrap_or_else(|| best.clone())
+            } else {
+                best.clone()
+            });
             switched = true;
         }
         Some(current) => {
@@ -261,7 +273,6 @@ pub fn select(
                     .reference()
                     .same_model(&current.model.reference())
                     && settings.pin.cost_switch_ratio > 0.0
-                    && candidate.cost_usd > 0.0
                     && current.cost_usd > candidate.cost_usd * settings.pin.cost_switch_ratio
             });
             let cost_release = cost_candidate.is_some();
@@ -813,6 +824,34 @@ mod tests {
         );
         assert_eq!(selection.chosen.id, "b");
         assert_eq!(selection.reason, "quality-gate");
+    }
+
+    #[test]
+    fn a_free_adequate_model_releases_a_paid_incumbent() {
+        let candidates = vec![
+            candidate("paid", 0.90, 0.95, 10.0),
+            candidate("free", 0.80, 0.80, 0.0),
+        ];
+        let pin = Pin {
+            model: Some(candidates[0].model.reference()),
+            since: 900.0,
+            last_turn_at: 950.0,
+            last_turn_class: "routine".to_string(),
+            last_complexity: 2,
+            ..Pin::default()
+        };
+        let selection = select(
+            &candidates,
+            &envelope(),
+            &verdict(2),
+            &settings(),
+            Some(&pin),
+            1000.0,
+            "judge",
+            Mode::Decide,
+        );
+        assert_eq!(selection.chosen.id, "free");
+        assert_eq!(selection.reason, "cheaper-model");
     }
 
     #[test]

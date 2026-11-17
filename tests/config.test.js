@@ -86,6 +86,10 @@ test("the default judge timeout covers a cold 4B judge", () => {
   expect(DEFAULT_CONFIG.judge.timeoutMs).toBe(5000)
 })
 
+test("local providers are zero-cost by default", () => {
+  expect(DEFAULT_CONFIG.pool.localCostZero).toBe(true)
+})
+
 test("custom policy weights layer over presets and per class", () => {
   const config = {
     policy: "cost",

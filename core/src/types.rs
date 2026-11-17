@@ -184,6 +184,7 @@ pub struct PoolSettings {
     pub max_models: usize,
     pub require_tools: bool,
     pub min_context: u64,
+    pub local_cost_zero: bool,
 }
 
 impl Default for PoolSettings {
@@ -192,6 +193,7 @@ impl Default for PoolSettings {
             max_models: 8,
             require_tools: true,
             min_context: 32_000,
+            local_cost_zero: true,
         }
     }
 }
@@ -359,6 +361,8 @@ pub struct CandidateSummary {
     pub variant: Option<String>,
     pub score: f64,
     pub cost_usd: f64,
+    pub quality: f64,
+    pub required: f64,
 }
 
 #[derive(Debug, Clone, Default, Serialize)]

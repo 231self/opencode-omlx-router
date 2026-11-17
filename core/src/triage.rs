@@ -253,7 +253,7 @@ mod tests {
     }
 
     #[test]
-    fn reconcile_lifts_large_context() {
+    fn reconcile_lifts_large_context_need_without_raising_complexity() {
         let envelope = envelope::build(&TurnInfo {
             prompt_text: "continue the refactor".to_string(),
             last_context_tokens: 90_000,
@@ -267,8 +267,8 @@ mod tests {
             ..Verdict::default()
         };
         let verdict = reconcile(lowered, &envelope);
-        assert!(verdict.complexity >= 3);
         assert_eq!(verdict.context_need, "large");
+        assert_eq!(verdict.complexity, 2, "context size is not task difficulty");
     }
 
     #[test]

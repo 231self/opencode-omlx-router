@@ -65,6 +65,27 @@ extra file; decision records still contain `timing.routeMs/judgeMs`.
 | `maxModels` | `8` | Candidate table size sent to the judge |
 | `requireTools` | `true` | Drop models without tool calling |
 | `minContext` | `32000` | Minimum context window |
+| `localCostZero` | `true` | Price loopback providers at zero, even when the catalog has a price |
+
+### Local models
+
+A model is local when its provider base URL is loopback or its provider is in
+`latency.localProviders`. With `localCostZero` on, its expected cost is zero and
+it competes on quality alone.
+
+Free local models get a size-based default quality (overrides still win):
+
+| Size | Quality |
+|---|---:|
+| under 3B | 0.35 |
+| 3–8B | 0.45 |
+| 8–30B | 0.55 |
+| 30B and above | 0.72 |
+| unknown | 0.40 |
+
+`limits.allowLocalForComplexity` (default 2) still drops a local model above that
+complexity when its quality is below the turn's requirement. A 27B local model
+clears routine edits; a 4B model stays on trivial turns.
 
 Favorites live in the host state file: `~/.local/state/opencode/model.json` or
 `~/.local/state/kilo/model.json`, field `favorite`. Empty favorites produce an

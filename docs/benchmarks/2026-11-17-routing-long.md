@@ -11,7 +11,7 @@ modelled from published per-million-token prices.
 - Prices per million tokens: cheap 0.2/0.8, mid 2/8, frontier 8/40.
 - Cache assumption: 80% of the stable prefix is read from cache on turns
   that keep the same model; a switch pays a cold prefill.
-- Quality: cheap 0.55, mid 0.8, frontier 0.95, compared against the quality
+- Quality: cheap 0.55, mid 0.85, frontier 0.95, compared against the quality
   required by each recorded verdict.
 
 ## Results
@@ -19,13 +19,15 @@ modelled from published per-million-token prices.
 | Scenario | Quality pass | Switches | Cost | vs frontier |
 |---|---:|---:|---:|---:|
 | fixed deepseek/deepseek-flash | 14/24 | 0 | $0.252 | -96% |
-| fixed deepseek/deepseek-v4-pro | 14/24 | 0 | $2.520 | -63% |
+| fixed deepseek/deepseek-v4-pro | 20/24 | 0 | $2.520 | -63% |
 | fixed anthropic/claude-fable-5-2 | 24/24 | 0 | $6.723 | +0% |
+| fixed omlx/Qwen3.8-27B-MLX-4bit | 14/24 | 0 | $0.000 | -100% |
+| fixed omlx/Qwen3-4B-Instruct-2507-4bit | 8/24 | 0 | $0.000 | -100% |
 | static complexity tiers (simulated) | 24/24 | 14 | $8.020 | +19% |
-| router cache | 24/24 | 2 | $6.651 | -1% |
-| router balanced | 24/24 | 2 | $6.651 | -1% |
-| router switch | 24/24 | 18 | $7.754 | +15% |
-| router mixed (balanced) | 24/24 | 2 | $6.651 | -1% |
+| router cache | 24/24 | 6 | $5.431 | -19% |
+| router balanced | 24/24 | 7 | $4.212 | -37% |
+| router switch | 24/24 | 18 | $4.190 | -38% |
+| router mixed (balanced) | 24/24 | 7 | $4.212 | -37% |
 
 ## What this measures
 
@@ -39,13 +41,15 @@ modelled from published per-million-token prices.
 
 ## Reading the numbers
 
-- Fixed cheap passes 14/24 turns, fixed mid 14/24, and
+- Fixed cheap passes 14/24 turns, fixed mid 20/24, and
   fixed frontier 24/24.
-- `switch` costs $7.754 (+15% vs frontier) at 24/24 quality.
-- `balanced` costs $6.651 at 24/24 quality, with 2 switches.
-- `cache` costs $6.651 at 24/24 quality, with 2 switches.
-- `mixed` costs $6.651 at 24/24 quality, with 2 switches.
-- The pin wins at this context size: switch pays $1.102 more than balanced. Several cold prefills at 13k–208k tokens cost more than keeping the incumbent cached.
+- `switch` costs $4.190 (−38% vs frontier) at 24/24 quality.
+- `balanced` costs $4.212 at 24/24 quality, with 7 switches.
+- `cache` costs $5.431 at 24/24 quality, with 6 switches.
+- `mixed` costs $4.212 at 24/24 quality, with 7 switches.
+- Local models are priced at zero and get a size-based quality: the 27B
+  clears routine turns at 0.55, the 4B stays on trivial turns at 0.45.
+- Switching wins at this context size: switch saves $0.022 against balanced. The cold prefill is cheaper than the incumbent's output price.
 
 ## Reproduce
 

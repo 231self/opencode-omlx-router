@@ -498,6 +498,30 @@ admin API. On any other endpoint the plugin detects that and prints the setup
 recipe instead of failing. Routing, pinning, the optimiser, and timing are
 backend-agnostic.
 
+## Route to local models
+
+Add the server as an OpenAI-compatible provider in the host, then include its
+models in the pool. oMLX on `:1234` and llama.cpp on `:8080` both work:
+
+```jsonc
+"providers": {
+  "omlx": {
+    "package": "@opencode/ai/providers/openai-compatible",
+    "settings": { "baseURL": "http://127.0.0.1:1234/v1" },
+    "models": {
+      "Qwen3.8-27B-MLX-4bit": { "capabilities": { "tools": true } }
+    }
+  }
+}
+```
+
+The router detects loopback providers, prices them at zero
+(`pool.localCostZero`), and gives them a size-based quality: under 3B 0.35,
+3–8B 0.45, 8–30B 0.55, 30B+ 0.72. An 8k-token routine edit no longer counts as
+hard work, so a local 27B can take those turns. Oversized local models still
+lose to cloud models when the turn requires more; set `quality.overrides` when
+you have a real measurement.
+
 ## Configuration
 
 One file is the source of truth: `~/.config/omlx-router/config.json`. Plugin
@@ -521,7 +545,8 @@ Full example: [`config.example.json`](config.example.json).
     "exclude": [],                        // glob patterns, drop
     "maxModels": 8,                       // judge table size
     "requireTools": true,
-    "minContext": 32000
+    "minContext": 32000,
+    "localCostZero": true              // loopback providers cost 0
   },
 
   "judge": {

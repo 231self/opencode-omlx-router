@@ -219,7 +219,9 @@ pub fn build(turn: &TurnInfo) -> Envelope {
     complexity += u8::from(signals.error_trace);
     complexity += u8::from(signals.planning || signals.review);
     complexity += u8::from(signals.multi_file);
-    complexity += u8::from(estimated_input_tokens > 8_000);
+    // Context size is a capability gate, not a difficulty signal. The context
+    // gate and the optimiser handle it; raising complexity here would send
+    // every long session to the frontier model.
     complexity += u8::from(turn.tool_failures > 0);
     complexity = complexity.clamp(1, 5);
     if signals.planning || signals.review {
@@ -337,6 +339,19 @@ mod tests {
         let envelope = build(&turn("panic: index out of bounds in parser.rs"));
         assert!(envelope.signals.error_trace);
         assert!(envelope.complexity_hint >= 3);
+    }
+
+    #[test]
+    fn a_routine_edit_with_moderate_context_stays_cheap() {
+        let mut input = turn("Add a null check to src/parser.rs and run the tests.");
+        input.last_context_tokens = 20_000;
+        let envelope = build(&input);
+        assert!(
+            envelope.complexity_hint <= 3,
+            "{}",
+            envelope.complexity_hint
+        );
+        assert!(!envelope.signals.large_context);
     }
 
     #[test]

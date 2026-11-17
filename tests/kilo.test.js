@@ -46,6 +46,14 @@ function environment() {
         minContext: 0,
       },
       judge: { enabled: false },
+      // The heuristic underestimates models without size hints; real setups
+      // should declare quality, as this fixture does.
+      quality: {
+        overrides: {
+          "deepseek/deepseek-flash": 0.55,
+          "deepseek/deepseek-v4-pro": 0.8,
+        },
+      },
     }),
   )
   fs.writeFileSync(env.OMLX_ROUTER_FAVORITES, JSON.stringify({ favorite: [], variant: {} }))

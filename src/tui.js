@@ -96,7 +96,7 @@ function poolLines(config, models, providers) {
       [
         `${model.providerID}/${model.modelID}${model.variant && model.variant !== "default" ? `#${model.variant}` : ""}`,
         `ctx=${model.limit.context}`,
-        `cost=${formatCost(model.cost)}`,
+        `cost=${model.local && config.pool.localCostZero !== false ? "free (local)" : formatCost(model.cost)}`,
         `local=${model.local ? "yes" : "no"}`,
         `quality=${model.qualityOverride ?? "auto"}`,
       ].join(" · "),

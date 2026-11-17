@@ -45,6 +45,7 @@ export function configDigest(config = {}) {
       maxModels: Number(config.pool?.maxModels) || 0,
       requireTools: config.pool?.requireTools !== false,
       minContext: Number(config.pool?.minContext) || 0,
+      localCostZero: config.pool?.localCostZero !== false,
     },
     judge: {
       enabled: config.judge?.enabled !== false,
