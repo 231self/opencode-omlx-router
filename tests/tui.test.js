@@ -110,7 +110,7 @@ test("tui exposes the router slash command", () => {
   const { context, command } = fakeContext()
   tui.setup(context)
   expect(tui.id).toBe("omlx-router.tui")
-  expect(command().slash).toEqual({ name: "router", arguments: true })
+  expect(command().slash).toEqual({ name: "router", aliases: ["model-router", "route"], arguments: true })
 })
 
 test("/router on and /router policy update the shared config", async () => {
@@ -132,7 +132,7 @@ test("/router status renders a dialog", async () => {
   tui.setup(context)
   await command().run("status")
   const alert = messages.find((entry) => entry.kind === "alert")
-  expect(alert.message).toContain("oMLX Router")
+  expect(alert.message).toContain("OpenCode Router")
   expect(alert.message).toContain("policy")
 })
 
@@ -168,7 +168,7 @@ test("/router version prints the router version", async () => {
   tui.setup(context)
   await command().run("version")
   const alert = messages.find((entry) => entry.kind === "alert")
-  expect(alert.message).toContain("oMLX Router")
+  expect(alert.message).toContain("OpenCode Router")
   expect(alert.message).toContain("ABI")
   expect(alert.message).toContain("config")
 })
@@ -181,7 +181,7 @@ test("/router debug renders a diagnostic bundle", async () => {
   tui.setup(context)
   await command().run("debug")
   const alert = messages.find((entry) => entry.kind === "alert")
-  expect(alert.message).toContain("oMLX Router")
+  expect(alert.message).toContain("OpenCode Router")
   expect(alert.message).toContain("judge")
   expect(alert.message).toContain("unavailable")
   expect(alert.message).not.toContain("apiKey")
@@ -317,7 +317,7 @@ test("/router opens a navigable menu with descriptions", async () => {
   expect(menu.length).toBeGreaterThan(5)
   expect(menu.every((option) => option.description)).toBe(true)
   expect(menu.some((option) => option.title === "Status")).toBe(true)
-  expect(messages.some((entry) => String(entry.message).includes("oMLX Router"))).toBe(true)
+  expect(messages.some((entry) => String(entry.message).includes("OpenCode Router"))).toBe(true)
 })
 
 test("tui instructs when no pool is selected", () => {

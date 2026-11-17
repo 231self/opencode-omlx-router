@@ -1,4 +1,5 @@
 import { readConfig } from "./config.js"
+import { VERSION } from "./version.js"
 import { Router, refOf } from "./router.js"
 import { refreshQualityIfStale } from "./quality.js"
 import { TELEMETRY_EVENTS, Telemetry } from "./telemetry.js"
@@ -75,7 +76,7 @@ export default {
 
     if (config.debug) {
       console.log("[omlx-router] loaded", {
-        version: "0.1.0",
+        version: VERSION,
         config: path,
         seeded,
         abi: core?.abi ?? null,

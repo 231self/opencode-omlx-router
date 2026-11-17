@@ -47,23 +47,23 @@ const [assumeYes, withoutYes] = hasFlag(withoutJson, "--yes")
 const [command = "status", ...rest] = withoutYes
 
 function usage() {
-  console.log(`omlx-router ${VERSION}
+  console.log(`opencode-model-router ${VERSION}
 
 Usage:
-  omlx-router [status] [--json] [--host opencode|kilo]
-  omlx-router config get <key>
-  omlx-router config set <key> <value>
-  omlx-router history [n] [--json]
-  omlx-router timing [n] [--json]
-  omlx-router pool
-  omlx-router quality [status|refresh]
-  omlx-router doctor
-  omlx-router debug [--json]
-  omlx-router judge pull [repo] [--yes]
-  omlx-router judge status
-  omlx-router judge cancel [task]
-  omlx-router judge probe
-  omlx-router version
+  opencode-model-router [status] [--json] [--host opencode|kilo]
+  opencode-model-router config get <key>
+  opencode-model-router config set <key> <value>
+  opencode-model-router history [n] [--json]
+  opencode-model-router timing [n] [--json]
+  opencode-model-router pool
+  opencode-model-router quality [status|refresh]
+  opencode-model-router doctor
+  opencode-model-router debug [--json]
+  opencode-model-router judge pull [repo] [--yes]
+  opencode-model-router judge status
+  opencode-model-router judge cancel [task]
+  opencode-model-router judge probe
+  opencode-model-router version
 
 Environment:
   OMLX_ROUTER_CONFIG   override config path
@@ -190,8 +190,8 @@ function poolCommand() {
     console.log("warning  pool.models is empty; routing pauses until you add models")
   }
   console.log(`config   ${configPath()}`)
-  console.log("set models: omlx-router config set pool.source list")
-  console.log(`            omlx-router config set pool.models '["provider/model", "..."]'`)
+  console.log("set models: opencode-model-router config set pool.source list")
+  console.log(`            opencode-model-router config set pool.models '["provider/model", "..."]'`)
   console.log("note     the live pool is resolved by the host adapter and shown with /router pool")
 }
 
@@ -355,7 +355,7 @@ async function doctorCommand() {
     if (!availability.suitable) {
       console.log(
         `hint     no ~4B judge detected; ${
-          backend.supported ? "run: omlx-router judge pull" : "start a small model on your server"
+          backend.supported ? "run: opencode-model-router judge pull" : "start a small model on your server"
         }`,
       )
     }
@@ -389,7 +389,7 @@ async function qualityCommand() {
   const cache = readQualityCache()
   console.log(`source ${source}`)
   if (!cache) {
-    console.log("cache  none; run: omlx-router quality refresh")
+    console.log("cache  none; run: opencode-model-router quality refresh")
     return
   }
   for (const [name, entry] of Object.entries(cache.sources ?? {})) {
@@ -446,7 +446,7 @@ try {
         console.log(
           JSON.stringify(
             {
-              name: "opencode-omlx-router",
+              name: "opencode-router",
               version: VERSION,
               abi: core.abi ?? ABI_VERSION,
               host,
@@ -471,6 +471,6 @@ try {
       process.exitCode = 1
   }
 } catch (error) {
-  console.error(`omlx-router: ${error?.message ?? error}`)
+  console.error(`opencode-router: ${error?.message ?? error}`)
   process.exitCode = 1
 }

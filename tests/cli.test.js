@@ -21,7 +21,7 @@ test("omlx-router version --json reports name, version, and ABI", () => {
   const result = run("version", "--json")
   expect(result.code).toBe(0)
   const info = JSON.parse(result.stdout)
-  expect(info.name).toBe("opencode-omlx-router")
+  expect(info.name).toBe("opencode-router")
   expect(info.version).toBe(VERSION)
   expect(info.abi).toBe(ABI_VERSION)
 })

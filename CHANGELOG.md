@@ -39,6 +39,9 @@
 
 ### Changed
 
+- Package renamed to `@231self/opencode-router`. The CLI installs as
+  `opencode-model-router`, with `omlx-router` kept as an alias. Plugin IDs,
+  config/state paths, and `OMLX_ROUTER_*` env vars are unchanged.
 - The README now leads with a "How it works" section covering the judge prompt
   and floor, deterministic signals, gates and scoring, pin modes, the context
   optimiser, the three cache layers, and subagent policy, with npm/CI/license

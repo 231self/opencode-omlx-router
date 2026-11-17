@@ -4,7 +4,7 @@ Guidance for agents working in this repository.
 
 ## What this is
 
-`opencode-omlx-router`: an OpenCode V2 / Kilo plugin that selects the best model
+`opencode-router`: an OpenCode V2 / Kilo plugin that selects the best model
 per turn from a user pool using a small oMLX-served judge, plus a deterministic
 context optimiser.
 

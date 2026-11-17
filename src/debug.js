@@ -110,7 +110,7 @@ export async function collectDebug({
   const decisions = safe(() => readDecisions(host, 1, env), [])
   const turns = safe(() => readTurns(host, 50, env), [])
   return {
-    name: "opencode-omlx-router",
+    name: "opencode-router",
     version: VERSION,
     abi: ABI_VERSION,
     host,
@@ -149,7 +149,7 @@ export function formatDebug(info) {
   const config = info.config ?? {}
   const judge = info.judge ?? {}
   const lines = [
-    `oMLX Router ${info.version} · ${info.host} · ABI ${info.abi}`,
+    `OpenCode Router ${info.version} · ${info.host} · ABI ${info.abi}`,
     `core     ${info.core?.abi ? `ABI ${info.core.abi} · ${shortPath(info.core.path)}` : "not loaded"}`,
     `config   ${shortPath(info.configPath)}${info.configExists ? "" : " (not created yet)"}`,
     `state    ${shortPath(info.stateDir)}`,

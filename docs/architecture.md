@@ -1,6 +1,6 @@
 # Architecture
 
-`opencode-omlx-router` has three layers:
+`opencode-router` has three layers:
 
 ```text
 host (OpenCode V2 / Kilo, Bun)
@@ -22,7 +22,7 @@ host (OpenCode V2 / Kilo, Bun)
 | `src/config.js` / `src/state.js` | Config seeding, atomic state files |
 | `src/telemetry.js` | Host event subscription → per-turn timing, tokens, cost |
 | `src/tui.js` | OpenCode TUI `/router` command (no server commands) |
-| `bin/omlx-router.mjs` | CLI for headless/Kilo/Desktop |
+| `bin/omlx-router.mjs` | CLI (`opencode-model-router`) for headless/Kilo/Desktop |
 
 The adapter performs only plumbing: host API calls, HTTP, file I/O, and applying
 the core's decisions. All routing and pruning policy lives in Rust.

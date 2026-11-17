@@ -42,7 +42,7 @@ export function buildStatus({ host = "opencode", env = process.env, core = null 
   }
 
   return {
-    name: "opencode-omlx-router",
+    name: "opencode-router",
     version: VERSION,
     host,
     enabled: Boolean(config.enabled),
@@ -91,7 +91,7 @@ function shortHost(value) {
 /** Compact status for the TUI dialog; the CLI keeps the wider format. */
 export function formatTuiStatus(status) {
   const lines = [
-    `oMLX Router ${status.version} · ${status.host}`,
+    `OpenCode Router ${status.version} · ${status.host}`,
     `state   ${status.enabled ? "enabled" : "disabled"} · policy ${status.policy} · pool ${status.pool}`,
     `judge   ${status.judge.enabled ? status.judge.model : "disabled"} · ${shortHost(status.judge.baseURL)}`,
     `pins    ${status.pins}${status.pinModels.length ? ` · ${status.pinModels.map(modelLabel).join(", ")}` : ""}`,

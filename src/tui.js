@@ -71,7 +71,7 @@ function modelLabel(reference) {
   return `${reference.providerID}/${reference.id ?? reference.modelID}${reference.variant ? `#${reference.variant}` : ""}`
 }
 
-async function show(context, message, title = "oMLX Router") {
+async function show(context, message, title = "OpenCode Router") {
   if (context.ui?.dialog?.alert) {
     await context.ui.dialog.alert({ title, message })
   } else {
@@ -202,7 +202,7 @@ async function poolMenu(context) {
   if (resolved.pool.length > 0) {
     await show(context, poolLines(config, models, providers))
     const choice = await context.ui.dialog.select({
-      title: "oMLX Router pool",
+      title: "OpenCode Router pool",
       options: [
         {
           title: "Change pool",
@@ -216,7 +216,7 @@ async function poolMenu(context) {
   }
 
   const source = await context.ui.dialog.select({
-    title: resolved.pool.length > 0 ? "oMLX Router pool source" : "No models selected · choose a pool",
+    title: resolved.pool.length > 0 ? "OpenCode Router pool source" : "No models selected · choose a pool",
     options: [
       {
         title: "Use my favorites",
@@ -251,7 +251,7 @@ async function poolMenu(context) {
       )
     } else {
       await context.ui.toast.show({
-        title: "oMLX Router",
+        title: "OpenCode Router",
         message: `favorites pool · ${favorites.favorite.length} model(s)`,
         variant: "success",
       })
@@ -290,7 +290,7 @@ async function poolMenu(context) {
     saveConfig({ ...config, pool: { ...config.pool, source: "list", models: references } })
     clearPins(HOST)
     await context.ui.toast.show({
-      title: "oMLX Router",
+      title: "OpenCode Router",
       message: `pool · ${references.length} model(s)`,
       variant: "success",
     })
@@ -308,7 +308,7 @@ async function poolMenu(context) {
     saveConfig({ ...config, pool: { ...config.pool, source: "available" } })
     clearPins(HOST)
     await context.ui.toast.show({
-      title: "oMLX Router",
+      title: "OpenCode Router",
       message: "pool · all available models",
       variant: "success",
     })
@@ -359,12 +359,12 @@ async function offerPull(context, config, repo, reason, background) {
   }
 
   if (!result.approved) {
-    await context.ui.toast.show({ title: "oMLX Router", message: "download cancelled" })
+    await context.ui.toast.show({ title: "OpenCode Router", message: "download cancelled" })
     return
   }
 
   await context.ui.toast.show({
-    title: "oMLX Router",
+    title: "OpenCode Router",
     message: `downloading ${result.summary.repo} (${result.summary.sizeFormatted}); check /router judge status`,
     variant: "success",
     duration: 5000,
@@ -377,7 +377,7 @@ async function offerPull(context, config, repo, reason, background) {
       onProgress: (task) => {
         if (task.status === "completed") {
           void context.ui.toast.show({
-            title: "oMLX Router",
+            title: "OpenCode Router",
             message: `${task.repo_id} downloaded; run /router judge to verify`,
             variant: "success",
             duration: 8000,
@@ -385,7 +385,7 @@ async function offerPull(context, config, repo, reason, background) {
         }
         if (task.status === "failed" || task.status === "cancelled") {
           void context.ui.toast.show({
-            title: "oMLX Router",
+            title: "OpenCode Router",
             message: `download ${task.status}: ${task.error || "no detail"}`,
             variant: "error",
             duration: 8000,
@@ -395,7 +395,7 @@ async function offerPull(context, config, repo, reason, background) {
     })
     .catch((error) => {
       void context.ui.toast.show({
-        title: "oMLX Router",
+        title: "OpenCode Router",
         message: `download monitor stopped: ${error?.message ?? error}`,
         variant: "error",
       })
@@ -433,7 +433,7 @@ async function cancelJudgeTask(context, config, taskID) {
     })
     if (!approved) return
     await provision.cancel(target.task_id)
-    await context.ui.toast.show({ title: "oMLX Router", message: "download cancelled", variant: "success" })
+    await context.ui.toast.show({ title: "OpenCode Router", message: "download cancelled", variant: "success" })
   } catch (error) {
     await show(context, `cannot cancel download: ${error?.message ?? error}`)
   }
@@ -447,7 +447,7 @@ async function openMenu(context) {
   for (;;) {
     const config = readConfig({ write: true }).config
     const choice = await context.ui.dialog.select({
-      title: "oMLX Router  ·  arrows move  ·  enter select",
+      title: "OpenCode Router  ·  arrows move  ·  enter select",
       options: [
         { title: "Status", value: "status", description: "State, judge, pool, pins, and the last decision" },
         { title: "Policy", value: "policy", description: "Cost / quality / latency; clears pins when changed" },
@@ -504,7 +504,7 @@ async function runCommand(context, input) {
     case "version": {
       await show(
         context,
-        [`oMLX Router ${VERSION} · ${HOST} · ABI ${ABI_VERSION}`, `config  ${configPath()}`].join("\n"),
+        [`OpenCode Router ${VERSION} · ${HOST} · ABI ${ABI_VERSION}`, `config  ${configPath()}`].join("\n"),
       )
       return
     }
@@ -515,7 +515,7 @@ async function runCommand(context, input) {
     case "on":
     case "off": {
       saveConfig({ ...config, enabled: command === "on" })
-      await context.ui.toast.show({ title: "oMLX Router", message: `routing ${command}`, variant: "success" })
+      await context.ui.toast.show({ title: "OpenCode Router", message: `routing ${command}`, variant: "success" })
       return
     }
     case "policy": {
@@ -530,11 +530,11 @@ async function runCommand(context, input) {
         }
         saveConfig({ ...config, policy: rest[0] })
         clearPins(HOST)
-        await context.ui.toast.show({ title: "oMLX Router", message: `policy ${rest[0]}`, variant: "success" })
+        await context.ui.toast.show({ title: "OpenCode Router", message: `policy ${rest[0]}`, variant: "success" })
         return
       }
       const choice = await context.ui.dialog.select({
-        title: "oMLX Router policy",
+        title: "OpenCode Router policy",
         current: config.policy,
         options: [
           { title: "Cost first", value: "cost", description: "Cheapest model that clears the bar; escalate when needed" },
@@ -554,7 +554,7 @@ async function runCommand(context, input) {
       }
       saveConfig({ ...config, policy: choice })
       clearPins(HOST)
-      await context.ui.toast.show({ title: "oMLX Router", message: `policy ${choice}`, variant: "success" })
+      await context.ui.toast.show({ title: "OpenCode Router", message: `policy ${choice}`, variant: "success" })
       return
     }
     case "pin-mode":
@@ -567,11 +567,11 @@ async function runCommand(context, input) {
         }
         saveConfig({ ...config, pin: { ...config.pin, mode: rest[0] } })
         clearPins(HOST)
-        await context.ui.toast.show({ title: "oMLX Router", message: `pin mode ${rest[0]}`, variant: "success" })
+        await context.ui.toast.show({ title: "OpenCode Router", message: `pin mode ${rest[0]}`, variant: "success" })
         return
       }
       const choice = await context.ui.dialog.select({
-        title: "oMLX Router pin mode",
+        title: "OpenCode Router pin mode",
         current: config.pin.mode ?? "balanced",
         options: [
           {
@@ -594,7 +594,7 @@ async function runCommand(context, input) {
       if (!choice) return
       saveConfig({ ...config, pin: { ...config.pin, mode: choice } })
       clearPins(HOST)
-      await context.ui.toast.show({ title: "oMLX Router", message: `pin mode ${choice}`, variant: "success" })
+      await context.ui.toast.show({ title: "OpenCode Router", message: `pin mode ${choice}`, variant: "success" })
       return
     }
     case "pool": {
@@ -688,7 +688,7 @@ async function runCommand(context, input) {
         lastApplied: reference,
         lastContextTokens: 0,
       })
-      await context.ui.toast.show({ title: "oMLX Router", message: `pinned ${modelLabel(reference)}`, variant: "success" })
+      await context.ui.toast.show({ title: "OpenCode Router", message: `pinned ${modelLabel(reference)}`, variant: "success" })
       return
     }
     case "auto": {
@@ -697,7 +697,7 @@ async function runCommand(context, input) {
         return
       }
       clearPin(HOST, sessionID)
-      await context.ui.toast.show({ title: "oMLX Router", message: "routing resumed", variant: "success" })
+      await context.ui.toast.show({ title: "OpenCode Router", message: "routing resumed", variant: "success" })
       return
     }
     case "judge": {
@@ -761,7 +761,7 @@ async function runCommand(context, input) {
       const enabled = rest[0] !== "off"
       saveConfig({ ...config, subagents: { ...config.subagents, enabled } })
       await context.ui.toast.show({
-        title: "oMLX Router",
+        title: "OpenCode Router",
         message: `subagent routing ${enabled ? "on" : "off"}`,
         variant: "success",
       })
@@ -820,7 +820,7 @@ export default {
       const noSource = !["favorites", "list", "available"].includes(config.pool.source)
       if (noFavorites || noList || noSource) {
         void context.ui.toast.show({
-          title: "oMLX Router",
+          title: "OpenCode Router",
           message: "No models selected. Open /router pool to choose favorites or an explicit list.",
           duration: 8000,
         })
@@ -852,7 +852,7 @@ export default {
               previous.id !== model.id)
           if (changed) {
             void context.ui.toast.show({
-              title: "oMLX Router",
+              title: "OpenCode Router",
               message: `model → ${model.providerID}/${model.id}`,
               duration: 3000,
             })
@@ -869,10 +869,10 @@ export default {
       commands: [
         {
           id: "omlx-router.settings",
-          title: "oMLX Router: settings",
-          group: "oMLX Router",
+          title: "OpenCode Router: settings",
+          group: "OpenCode Router",
           palette: true,
-          slash: { name: "router", arguments: true },
+          slash: { name: "router", aliases: ["model-router", "route"], arguments: true },
           run: async (input) => {
             try {
               await runCommand(context, input)

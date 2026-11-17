@@ -1,6 +1,6 @@
 <div align="center">
 
-# omlx-router
+# opencode-router
 
 **Per-turn model routing for OpenCode V2 and Kilo.**
 
@@ -8,7 +8,7 @@ A small model running on your machine picks the right model for every turn — s
 one-line question doesn't cost frontier tokens, and a hard refactor doesn't run on
 a model that will fail it.
 
-[![npm](https://img.shields.io/npm/v/@231self/opencode-omlx-router?color=3b82f6&label=npm)](https://www.npmjs.com/package/@231self/opencode-omlx-router)
+[![npm](https://img.shields.io/npm/v/@231self/opencode-router?color=3b82f6&label=npm)](https://www.npmjs.com/package/@231self/opencode-router)
 [![ci](https://github.com/231self/opencode-omlx-router/actions/workflows/ci.yml/badge.svg)](https://github.com/231self/opencode-omlx-router/actions/workflows/ci.yml)
 [![license](https://img.shields.io/badge/license-Apache--2.0-22c55e)](LICENSE)
 [![node](https://img.shields.io/badge/node-%E2%89%A522-111827)](https://nodejs.org)
@@ -41,18 +41,18 @@ while cloud models handle the hard ones.
 
 ```sh
 # 1. install
-opencode plugin add @231self/opencode-omlx-router
+opencode plugin add @231self/opencode-router
 
 # 2. choose the models the router may pick from
-omlx-router config set pool.source list
-omlx-router config set pool.models '["deepseek/deepseek-flash","deepseek/deepseek-v4-pro"]'
+opencode-model-router config set pool.source list
+opencode-model-router config set pool.models '["deepseek/deepseek-flash","deepseek/deepseek-v4-pro"]'
 
-# 3. make sure a small judge model is served by oMLX
-omlx-router judge probe
+# 3. make sure a small judge model is served locally
+opencode-model-router judge probe
 
 # 4. talk normally; inspect the first decisions
-omlx-router status
-omlx-router history 5
+opencode-model-router status
+opencode-model-router history 5
 ```
 
 In the TUI, `/router` opens the full menu, `/router explain` shows why the last
@@ -76,8 +76,8 @@ turn picked its model, and `/router debug` prints the diagnostic bundle.
 |---|---|
 | [OpenCode](https://opencode.ai) ≥ 2.3 | First-class; V2 plugin API |
 | [Kilo CLI](https://kilo.ai) ≥ 7.6.2 | Best-effort mode; see [Kilo limitations](#kilo-limitations) |
-| [oMLX](https://github.com/jundot/omlx) | OpenAI-compatible server, default `http://127.0.0.1:1234/v1` |
-| A small judge model in oMLX | e.g. a ~4B instruct model; see [Choose a judge](#choose-a-judge) |
+| [oMLX](https://github.com/jundot/omlx) or [llama.cpp](https://github.com/ggml-org/llama.cpp) | Local OpenAI-compatible server; oMLX defaults to `http://127.0.0.1:1234/v1`, `llama-server` to `:8080` |
+| A small judge model | e.g. a ~4B instruct model; oMLX, llama.cpp, or any OpenAI-compatible server; see [Choose a judge](#choose-a-judge) |
 | Node/Bun | Provided by OpenCode and Kilo; nothing extra to install |
 
 No Rust toolchain is needed to install a released package. Building from source
@@ -90,28 +90,28 @@ Release/build details: [docs/releasing.md](docs/releasing.md).
 ### OpenCode V2
 
 ```sh
-opencode plugin add @231self/opencode-omlx-router
+opencode plugin add @231self/opencode-router
 ```
 
 ```jsonc
 // ~/.config/opencode/opencode.jsonc
 {
   "$schema": "https://opencode.ai/config.json",
-  "plugins": ["@231self/opencode-omlx-router"]
+  "plugins": ["@231self/opencode-router"]
 }
 ```
 
 ### Kilo
 
 ```sh
-kilo plugin @231self/opencode-omlx-router
+kilo plugin @231self/opencode-router
 ```
 
 ```jsonc
 // ~/.config/kilo/kilo.jsonc or project kilo.jsonc
 {
   "$schema": "https://app.kilo.ai/config.json",
-  "plugin": ["@231self/opencode-omlx-router"]
+  "plugin": ["@231self/opencode-router"]
 }
 ```
 
@@ -128,16 +128,20 @@ Then point the host at the checkout:
 
 ```jsonc
 // OpenCode
-{ "plugins": ["/absolute/path/to/opencode-omlx-router"] }
+{ "plugins": ["/absolute/path/to/opencode-router"] }
 ```
 
 ```jsonc
 // Kilo
-{ "plugin": ["/absolute/path/to/opencode-omlx-router/src/index.js"] }
+{ "plugin": ["/absolute/path/to/opencode-router/src/index.js"] }
 ```
 
 Kilo applies a decision at the next request boundary; see
 [Kilo limitations](#kilo-limitations).
+
+The CLI installs as `opencode-model-router`. `omlx-router` remains an alias.
+Config, state, plugin IDs, and `OMLX_ROUTER_*` env vars keep their historical
+names, so existing setups keep working.
 
 ## How it works
 
@@ -161,7 +165,7 @@ telemetry (after the turn)
 
 The routing brain is deterministic, has no I/O, and is unit-tested on its own.
 The only model call the plugin makes for a decision is the short verdict prompt
-to the oMLX endpoint you configure (localhost by default). If oMLX is slow or
+to the judge endpoint you configure (localhost by default). If it is slow or
 down, deterministic heuristics take over and routing continues.
 
 ### The judge
@@ -322,7 +326,7 @@ These are unrelated and worth keeping apart:
 | Host catalog | OpenCode refreshes models.dev (~15 min) and exposes it live | Plugin caches the catalog for 2 s, `/models` for 60 s |
 
 Pricing comes from the host catalog, so it follows models.dev automatically.
-Local oMLX models have no catalog price; set
+Local models have no catalog price; set
 `providers.<id>.models.<id>.cost` if you want the cost policy to weigh them.
 
 ### Subagents
@@ -351,9 +355,9 @@ The **pool** is the set of models the router may choose from. By default it uses
 your host favorites. You can instead name the models explicitly:
 
 ```sh
-omlx-router config set pool.source list
-omlx-router config set pool.models '["deepseek/deepseek-flash","deepseek/deepseek-v4-pro"]'
-omlx-router config set pool.minContext 32000
+opencode-model-router config set pool.source list
+opencode-model-router config set pool.models '["deepseek/deepseek-flash","deepseek/deepseek-v4-pro"]'
+opencode-model-router config set pool.minContext 32000
 ```
 
 Or edit `~/.config/omlx-router/config.json`:
@@ -387,7 +391,7 @@ startup and in `/router status` it points to `/router pool`, which offers
 
 `pool.include` / `pool.exclude` add or drop globs after the source; `maxModels`
 caps the judge's candidate table; `requireTools` and `minContext` are hard
-filters. `/router pool` (or `omlx-router pool`) shows the resolved pool, the
+filters. `/router pool` (or `opencode-model-router pool`) shows the resolved pool, the
 config path, and the exact commands to change it.
 
 If model names do not contain parameter sizes (for example `deepseek-flash`
@@ -411,7 +415,8 @@ heuristics.
 
 ## Choose a judge
 
-The judge is a small instruct model served by oMLX. It answers one short JSON
+The judge is a small instruct model served by a local OpenAI-compatible server
+(oMLX, llama.cpp, or similar). It answers one short JSON
 question per turn: how complex is this turn, does it need tools/vision/long
 context, how much reasoning, and how confident is it.
 
@@ -421,7 +426,7 @@ through the oMLX app's model browser. A 1.7B-class model works for coarse
 classification; a 27B model works but adds real prefill cost to every turn.
 
 The plugin defaults to `judge.model: "auto"`, which picks the smallest model the
-oMLX `/v1/models` endpoint advertises. Set it explicitly if you run several small
+`/v1/models` endpoint advertises. Set it explicitly if you run several small
 models:
 
 ```json
@@ -442,11 +447,11 @@ download size, license, and source first.
 ```
 
 ```sh
-omlx-router judge pull              # prints the summary, asks y/N
-omlx-router judge pull --yes        # skips only the prompt
-omlx-router judge pull mlx-community/Some-Other-4B
-omlx-router judge status
-omlx-router judge cancel
+opencode-model-router judge pull              # prints the summary, asks y/N
+opencode-model-router judge pull --yes        # skips only the prompt
+opencode-model-router judge pull mlx-community/Some-Other-4B
+opencode-model-router judge status
+opencode-model-router judge cancel
 ```
 
 The download uses oMLX's own admin API and its Hugging Face downloader, so the
@@ -551,8 +556,8 @@ models keep the heuristic or the local size tier.
 ```
 
 ```sh
-omlx-router quality refresh     # fetch now
-omlx-router quality status      # per-source counts and age
+opencode-model-router quality refresh     # fetch now
+opencode-model-router quality status      # per-source counts and age
 ```
 
 In the TUI: `/router quality` and `/router quality refresh`. `/router pool`
@@ -621,8 +626,8 @@ Full example: [`config.example.json`](config.example.json).
   "judge": {
     "enabled": true,
     "baseURL": "http://127.0.0.1:1234/v1",
-    "model": "auto",                      // or an explicit oMLX model id
-    "apiKey": "{env:OMLX_API_KEY}",       // oMLX may not require one
+    "model": "auto",                      // or an explicit judge model id
+    "apiKey": "{env:OMLX_API_KEY}",       // the server may not require one
     "timeoutMs": 5000,
     "cacheTtlMs": 600000,
     "cacheSize": 128,
@@ -738,7 +743,7 @@ the CLI for headless `opencode run`/`serve`, OpenCode Desktop, and Kilo.
 | `/router subagents on\|off` | Toggle subagent routing |
 
 Menu items have descriptions and are navigable with the arrow keys, Enter, and
-Esc. A palette entry, **"oMLX Router: settings"**, opens the same menu without
+Esc. A palette entry, **"OpenCode Router: settings"**, opens the same menu without
 typing a command. When routing changes the model, the plugin refreshes the
 session and shows a short `model → …` toast; the host footer follows the
 session model.
@@ -748,15 +753,15 @@ session model.
 Works in any host, including Kilo, headless OpenCode, and CI:
 
 ```sh
-omlx-router status
-omlx-router version [--json]
-omlx-router debug [--json]
-omlx-router doctor
-omlx-router pool
-omlx-router history 20
-omlx-router timing 20
-omlx-router config get policy
-omlx-router config set policy quality
+opencode-model-router status
+opencode-model-router version [--json]
+opencode-model-router debug [--json]
+opencode-model-router doctor
+opencode-model-router pool
+opencode-model-router history 20
+opencode-model-router timing 20
+opencode-model-router config get policy
+opencode-model-router config set policy quality
 ```
 
 `version` prints the bare version for scripts; `version --json` adds the package
@@ -770,7 +775,7 @@ applies to the following turn, and the decision log records
 `applied: "boundary"`. If Kilo's model-switching API is unavailable to plugins,
 the shim reports `kilo: unsupported` and stays out of the way rather than
 pretending to route. Kilo has no `/router` command and no TUI settings dialog;
-use the `omlx-router` CLI and `config.json`.
+use the `opencode-model-router` CLI and `config.json`.
 
 ## Privacy
 
@@ -786,7 +791,7 @@ use the `omlx-router` CLI and `config.json`.
 - API keys are read from your config/env and never logged. The oMLX admin key
   may be read from the local `~/.omlx/settings.json` (when allowed) solely for
   the local download login.
-- `omlx-router debug` prints a secret-free config digest, never key values.
+- `opencode-model-router debug` prints a secret-free config digest, never key values.
 - State is local: `~/.local/state/omlx-router/<host>/`.
 
 ## Troubleshooting
@@ -801,7 +806,7 @@ use the `omlx-router` CLI and `config.json`.
 | Config ignored | The file wins after first run; check `~/.config/omlx-router/config.json` and the drift warning in status |
 | Prices look stale | The host refreshes models.dev on its own schedule; `/router pool` reads the live catalog |
 
-When in doubt, run `/router debug` (TUI) or `omlx-router debug` (CLI) and include
+When in doubt, run `/router debug` (TUI) or `opencode-model-router debug` (CLI) and include
 its output in a bug report. It contains no prompt text and no credentials.
 
 ## Development
@@ -812,8 +817,8 @@ bun run build:wasm     # cargo build --target wasm32-unknown-unknown --release
 bun test               # adapter + WASM bridge tests
 bun run test:rust      # cargo test
 bun run check          # fmt, clippy, tests, size gate
-bun run test:e2e       # live prompt tests against OpenCode + Kilo (needs oMLX)
-bun run test:e2e:live  # one prompt through the real oMLX judge
+bun run test:e2e       # live prompt tests against OpenCode + Kilo (needs a local judge)
+bun run test:e2e:live  # one prompt through the real local judge
 bun run judge:calibrate # real judge verdicts + latency across six cases
 bun run routing:eval    # real judge routing vs a ground-truth oracle
 bun run bench           # deterministic routing/cost benchmark
@@ -834,7 +839,7 @@ Layout:
 core/            Rust decision engine (no I/O), compiled to dist/core.wasm
 src/             plain-JS host adapters, judge client, state, commands
 src/tui.js       OpenCode TUI /router command + palette (plain JS)
-bin/             omlx-router CLI
+bin/             CLI (opencode-model-router, alias omlx-router)
 tests/           Bun tests and fixtures
 docs/            design spec and deeper docs
 ```

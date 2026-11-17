@@ -82,7 +82,7 @@ message was produced. Command output must therefore not use synthetic messages.
 Decision: the `/router` surface lives in the **TUI part** (slash command +
 palette). The TUI reads config/state files directly, lists models through its
 own location data, and calls oMLX directly for the judge probe. Headless/GUI and
-Kilo use the `omlx-router` CLI. No server-side `/router` command is registered.
+Kilo use the `opencode-model-router` CLI. No server-side `/router` command is registered.
 
 ### Remaining probe item
 
@@ -213,7 +213,7 @@ Verified against the live oMLX 0.6.4 admin API without starting a large download
   the `omlx_admin_session` cookie.
 - `GET /admin/api/hf/model-info?repo_id=mlx-community/Qwen3-4B-Instruct-2507-4bit`
   returns params 4.0B, ~2.1 GB of files, `license:apache-2.0`, `mlx` tag.
-- `omlx-router judge pull` printed that summary and, after a declined prompt,
+- `opencode-model-router judge pull` printed that summary and, after a declined prompt,
   made **no** download request. `judge status` and consent gating are covered by
   fake-server tests; the download path uses `/api/hf/download` and
   `/api/hf/tasks` and triggers oMLX model rediscovery on completion.
@@ -281,7 +281,7 @@ Fields in a turn record:
 - `turnMs` — prompt admission to execution end
 - `steps`, `tokens`, `cost`, `model`, `usedModel`
 
-`/router timing`, `omlx-router timing`, and the `timing` line in `/router
+`/router timing`, `opencode-model-router timing`, and the `timing` line in `/router
 status` show which side dominates. Kilo currently records route/judge timing in
 decisions but not the host turn record, because its V1 event stream needs a
 separate SSE adapter.
