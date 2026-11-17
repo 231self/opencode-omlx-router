@@ -10,7 +10,8 @@
   pins, and can clear all pins. Status now says "sessions" next to the count.
 - Failover now handles payment and quota failures (HTTP 402, insufficient
   credits/balance, usage limits) and blocks the whole provider for auth, billing,
-  or quota errors. Rate limits and server errors still block only the model.
+  or quota errors. Rate limits and server errors still block only the model. The
+  auth/billing/quota cooldown is 5 minutes instead of 30.
 
 ### Changed
 

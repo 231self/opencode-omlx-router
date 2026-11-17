@@ -3,7 +3,7 @@ import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 
-import { Router, isFailoverError, isProviderWide } from "../src/router.js"
+import { Router, cooldownFor, isFailoverError, isProviderWide } from "../src/router.js"
 import { appendDecision, readDecisions, readPin, writePin } from "../src/state.js"
 
 const MODELS = [
@@ -226,6 +226,14 @@ test("failover recognises quota and billing failures", () => {
   expect(isProviderWide({ status: 401 })).toBe(true)
   expect(isProviderWide({ status: 429, type: "rate-limit" })).toBe(false)
   expect(isProviderWide({ status: 429, message: "quota exceeded" })).toBe(true)
+})
+
+test("auth and billing cooldowns are short", () => {
+  const config = { failover: { cooldownMs: 300_000, serverCooldownMs: 60_000, authCooldownMs: 300_000 } }
+  expect(cooldownFor(config, { status: 402 })).toBe(300_000)
+  expect(cooldownFor(config, { status: 401 })).toBe(300_000)
+  expect(cooldownFor(config, { status: 429 })).toBe(300_000)
+  expect(cooldownFor(config, { status: 500 })).toBe(60_000)
 })
 
 test("a billing failure blocks the provider and redirects to another one", () => {

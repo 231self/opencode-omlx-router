@@ -95,7 +95,7 @@ export const DEFAULT_CONFIG = {
     enabled: true,
     cooldownMs: 300000,
     serverCooldownMs: 60000,
-    authCooldownMs: 1800000,
+    authCooldownMs: 300000,
     redirectTtlMs: 60000,
     retryDelayMs: 1000,
   },

@@ -130,7 +130,7 @@ directory and is rediscovered on completion. The admin key is never logged.
 | `enabled` | `true` | Route around provider failures instead of hammering a dead model |
 | `cooldownMs` | `300000` | 429 cooldown; the model is excluded from routing |
 | `serverCooldownMs` | `60000` | 5xx, timeout, and overload cooldown |
-| `authCooldownMs` | `1800000` | 401/402/403, billing, and quota cooldown |
+| `authCooldownMs` | `300000` | 401/402/403, billing, and quota cooldown (5 min) |
 | `redirectTtlMs` | `60000` | How long a queued same-turn redirect stays valid |
 | `retryDelayMs` | `1000` | Delay used only when the host decided not to retry |
 

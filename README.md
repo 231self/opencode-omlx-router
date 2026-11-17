@@ -290,7 +290,7 @@ Picking a model yourself (`/model`) becomes a forced pin until you run
 ### Provider failover
 
 A 429, 5xx, timeout, auth, billing, or quota failure blocks the model for the
-session — 5 min for rate limits, 1 min for server errors, 30 min for auth and
+session — 5 min for rate limits, 1 min for server errors, 5 min for auth and
 billing. Auth, payment, and quota failures block the whole provider; rate limits
 and server errors block the one model. The pin is cleared and the next candidate
 from the last decision is queued. OpenCode's `model.resolve` hook swaps it in on
