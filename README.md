@@ -1,12 +1,20 @@
-# opencode-omlx-router
+<div align="center">
 
-Per-turn model routing for [OpenCode V2](https://opencode.ai) and
-[Kilo](https://kilo.ai), decided by a small local model served by
-[oMLX](https://github.com/jundot/omlx), with a context optimiser that keeps each
-turn inside the chosen model's budget.
+# omlx-router
 
-> **npm package:** [`@231self/opencode-omlx-router`](https://www.npmjs.com/package/@231self/opencode-omlx-router)
->
+**Per-turn model routing for OpenCode V2 and Kilo.**
+
+A small model running on your machine picks the right model for every turn — so a
+one-line question doesn't cost frontier tokens, and a hard refactor doesn't run on
+a model that will fail it.
+
+[![npm](https://img.shields.io/npm/v/@231self/opencode-omlx-router?color=3b82f6&label=npm)](https://www.npmjs.com/package/@231self/opencode-omlx-router)
+[![ci](https://github.com/231self/opencode-omlx-router/actions/workflows/ci.yml/badge.svg)](https://github.com/231self/opencode-omlx-router/actions/workflows/ci.yml)
+[![license](https://img.shields.io/badge/license-Apache--2.0-22c55e)](LICENSE)
+[![node](https://img.shields.io/badge/node-%E2%89%A522-111827)](https://nodejs.org)
+
+</div>
+
 > **Status: v0.1.2.** Routing, the context optimiser, subagent policy, the TUI
 > `/router` surface, per-turn timing, the CLI, and the Kilo shim are implemented
 > and tested. Design of record:
@@ -25,31 +33,26 @@ deterministic triage, context-fit gate, cache-aware pinning, loop escalation,
 decision logging — and drops the heavy machinery (HyDRA/ONNX embeddings,
 benchmark calibration, virtual cost, planning delegate).
 
-## How it works
+## Quick start
 
-```text
-user turn
-  → host hook (OpenCode V2 prompt hook / Kilo chat.message)
-  → pool: favorites · explicit list · all available models
-  → hard gates: tools · vision · context fit · not deprecated
-  → deterministic triage (cheap early exits)
-  → oMLX judge: complexity, task, reasoning need, confidence   [5 s budget]
-  → scoring under your policy: cost-first · quality-first · latency-first
-  → pin policy: keep the incumbent unless the challenger clearly wins
-  → session.switchModel(...)
-  → context optimiser: prune only when over the chosen model's budget
-  → decision log + timing (local judge vs remote turn)
-  → /router status, history, timing, explain
+```sh
+# 1. install
+opencode plugin add @231self/opencode-omlx-router
+
+# 2. choose the models the router may pick from
+omlx-router config set pool.source list
+omlx-router config set pool.models '["deepseek/deepseek-flash","deepseek/deepseek-v4-pro"]'
+
+# 3. make sure a small judge model is served by oMLX
+omlx-router judge probe
+
+# 4. talk normally; inspect the first decisions
+omlx-router status
+omlx-router history 5
 ```
 
-The routing brain is a Rust core compiled to WebAssembly and shipped in the
-package; it is deterministic, has no I/O, and is unit-tested on its own. Plain
-JavaScript adapters wire it to each host. There is **no TypeScript** in this
-project and no Python runtime requirement.
-
-The only model call the plugin makes for a decision is a short JSON-verdict
-prompt to the oMLX endpoint you configure (localhost by default). If oMLX is
-slow or down, deterministic heuristics take over and routing continues.
+In the TUI, `/router` opens the full menu, `/router explain` shows why the last
+turn picked its model, and `/router debug` prints the diagnostic bundle.
 
 ## Documentation
 
@@ -131,6 +134,180 @@ Then point the host at the checkout:
 Kilo applies a decision at the next request boundary; see
 [Kilo limitations](#kilo-limitations).
 
+## How it works
+
+Three layers: a plain-JS adapter for the host, a Rust decision engine compiled to
+WebAssembly, and a short JSON-verdict call to a small local model.
+
+```text
+prompt hook
+  ├─ envelope: cheap Rust heuristics → signals + complexity hint
+  ├─ short-circuit? (trivial · forced pin · escalation · empty pool)
+  ├─ judge: 4B local model → JSON verdict        [5 s budget]
+  ├─ reconcile: judge + deterministic floor (judge can raise, never lower)
+  ├─ gates → score → pin → chosen model
+  └─ session.switchModel(...) + write pin + decision record
+context hook (same turn)
+  ├─ optimiser: token estimate → prune plan → afterTokens
+  └─ afterTokens feeds the next routing decision
+telemetry (after the turn)
+  └─ turns.jsonl: routing/judge/core/switch time, tokens, cost
+```
+
+The routing brain is deterministic, has no I/O, and is unit-tested on its own.
+The only model call the plugin makes for a decision is the short verdict prompt
+to the oMLX endpoint you configure (localhost by default). If oMLX is slow or
+down, deterministic heuristics take over and routing continues.
+
+### The judge
+
+A classifier, not a chat model. It is asked one question per turn, and sees only:
+
+- the turn truncated to 1,200 characters,
+- token counts, image count, and tool-failure count,
+- the deterministic signals (code, error, planning, review),
+- the candidate table — context, tools, vision, price, local flag.
+
+It never sees the transcript, file contents, or tool output.
+
+| Input | Value |
+|---|---|
+| Temperature | `0` |
+| Max tokens | `220` |
+| Format | `response_format: json_object`, one repair retry |
+| Timeout | `judge.timeoutMs` (default 5 s) |
+
+It returns:
+
+```json
+{"task":"edit","complexity":2,"needsTools":true,"needsVision":false,
+ "contextNeed":"small","reasoningNeed":"medium","confidence":0.8}
+```
+
+**The judge is a floor-adder.** `reconcile` lets it raise complexity, reasoning,
+or context need, but never lower what the deterministic signals already proved.
+That is why a 4B that under-classifies a multi-file refactor cannot cause an
+under-route. `confidence` is recorded but does not steer selection. On timeout,
+HTTP, or parse failure the heuristic verdict is used, the decision log records
+`used: false`, and the turn continues.
+
+### Signals and complexity
+
+Before any judge call, the envelope computes word-boundary-aware markers:
+
+| Signal | Trigger |
+|---|---|
+| `code` | code fences, source extensions, `cargo`/`bun`/`npm`/`git` |
+| `agentic` | implement, fix, refactor, migrate, debug, add, run, test, … |
+| `error_trace` | panic, traceback, exception, `error:`, exit code, … |
+| `planning` | plan, design, architect, approach, trade-off, spec |
+| `review` | review, audit, critique, security, look for bugs |
+| `trivial` | short, no signals, small prompt and context |
+| `multi_file` | ≥ 3 code files, or 2 across files |
+| `large_context` | estimated input over 60k tokens |
+| `repeated_failures` | 3+ consecutive identical tool failures |
+
+Complexity starts at 1 and adds a point per signal (clamped to 5), with planning
+and review floored at 3. Trivial turns skip the judge entirely.
+
+### Scoring
+
+1. **Gates.** Deprecated models, context fit (`input ≤ context × 0.9`), minimum
+   context, required tools, and required vision are hard filters.
+2. **Required quality.** Complexity maps to 0.25 / 0.40 / 0.55 / 0.75 / 0.90,
+   plus 0.10 for high reasoning and 0.05 for planning or review, then the
+   agent's quality floor.
+3. **Quality estimate.** 45% price percentile, 25% parameter-size heuristic,
+   15% context percentile, 15% reasoning support. Overrides win; free local
+   models default to 0.35.
+4. **Expected cost.** Input plus expected output at the model's context tier,
+   with a cache-read discount (`pin.cacheHitRatio`, default 0.8).
+5. **Policy weights.**
+
+| Policy | Cost | Quality | Latency | Use when |
+|---|---:|---:|---:|---|
+| `cost` (default) | 0.6 | 0.3 | 0.1 | Cheapest model that clears the bar |
+| `quality` | 0.1 | 0.8 | 0.1 | Quality matters more than spend |
+| `latency` | 0.2 | 0.2 | 0.6 | Interactive work; favours local and flash tiers |
+
+Changing the policy clears pins so the next turn is scored from scratch.
+
+### Pinning
+
+Provider prompt caches are per model and per provider. A switch pays one full
+prefill, so routing alone would thrash the cache. The pin is the counterweight.
+
+| Mode | Behaviour |
+|---|---|
+| `cache` | Keep the incumbent to reuse its cache; switch only on hard breaks |
+| `balanced` (default) | Keep unless a challenger wins by `pin.switchThreshold` (0.12) |
+| `switch` | Take the best every turn, with cold-cache scoring |
+
+Even in `cache` or `balanced`, a pin is released by:
+
+- idle TTL (`pin.idleTtlMs`, 5 min),
+- a complexity jump of two or more,
+- pin age (`pin.maxAgeMs`, 30 min) or pinned turns (`pin.maxTurns`, 8),
+- an incumbent costing over `pin.costSwitchRatio` (4×) the cheapest **adequate**
+  challenger,
+- a flip-flop guard (`pin.flipFlopTurns`, 3),
+- a gate failure, context overflow, compaction, policy change, or user override.
+
+Picking a model yourself (`/model`) becomes a forced pin until you run
+`/router auto`, the session compacts, or the model disappears.
+
+### Context optimiser
+
+When the assembled request fits, **nothing is changed** — cache-safe by
+construction. When it does not fit, the optimiser works in order and stops as
+soon as the request fits:
+
+1. Deduplicate identical tool outputs, keeping the newest.
+2. Truncate outputs above `optimiser.maxToolTokens` (2,000) to 60% head + 40%
+   tail, with a marker.
+3. Stub older tool outputs, largest first, keeping the last
+   `keepRecentToolOutputs` (3).
+
+System instructions, user text, the first user message, recent turns, and error
+outputs are protected. If pruning cannot fit the request, the optimiser reports
+`overflow`, clears the pin, and lets OpenCode compact; the next turn routes to a
+model with a larger window. Compaction, title, and transient generation requests
+are never pruned or routed.
+
+### The three caches
+
+These are unrelated and worth keeping apart:
+
+| Cache | Scope | Invalidation |
+|---|---|---|
+| Provider prompt cache | Per model/provider; Anthropic markers, OpenAI prefix, oMLX KV | Not portable across models; the pin protects it |
+| Judge verdict cache | In-process LRU, 128 entries, 10 min | Prompt fingerprint, agent, policy, pool, context tokens |
+| Host catalog | OpenCode refreshes models.dev (~15 min) and exposes it live | Plugin caches the catalog for 2 s, `/models` for 60 s |
+
+Pricing comes from the host catalog, so it follows models.dev automatically.
+Local oMLX models have no catalog price; set
+`providers.<id>.models.<id>.cost` if you want the cost policy to weigh them.
+
+### Subagents
+
+Subagents route independently, with their own pins, so an `explore` subagent can
+run cheap and fast while the parent stays on a strong model. Detection is via the
+child session's `parentID`; the agent identity comes from the session metadata.
+
+Resolution order:
+
+1. An explicit model configured on the agent (respected as a forced pin unless
+   `subagents.overrideExplicitModel` is `true`).
+2. `subagents.agents[agentID]`.
+3. `subagents.default`.
+4. The global policy.
+
+The shipped defaults: `explore` is latency-first with 128k minimum context,
+`general` is cost-first with a 0.55 floor, and `review`/`plan` are quality-first
+with high floors. Loop escalation is per session, so a failing subagent escalates
+itself without dragging the parent. On a score tie, a child prefers the parent's
+model to reuse its cache.
+
 ## Choose the pool
 
 The **pool** is the set of models the router may choose from. By default it uses
@@ -158,9 +335,7 @@ Or edit `~/.config/omlx-router/config.json`:
 }
 ```
 
-`source` can be:
-
-| Value | Meaning |
+| Source | Behaviour |
 |---|---|
 | `favorites` | Models favorited in OpenCode/Kilo (default). Empty favorites mean **no pool**; routing pauses rather than silently using every model |
 | `list` | Exactly `pool.models` (use `provider/model#variant` for a variant) |
@@ -265,20 +440,9 @@ Verify with:
 ```
 
 This prints the selected model, a sample verdict, and the round-trip latency.
-
-## Quick start
-
-1. Install the plugin and configure the judge (above).
-2. Ask for a status: `/router` (OpenCode) or `omlx-router status` (any host).
-3. Talk normally. Every turn is routed; the session's model changes to the
-   chosen one, and `/router explain` shows why.
-4. Choose a policy: `/router policy` prints the options; pick one with
-   `/router policy quality` (or use the TUI picker described below).
-
-By default the pool is your **favorites** in the host's model picker
-(`Ctrl+F` in the OpenCode model dialog). To route across everything you have
-enabled instead, set `pool.source` to `available`; to pin an exact list, use
-`pool.source: "list"` with `pool.models`.
+Any OpenAI-compatible judge endpoint works, not only oMLX: point
+`judge.baseURL` at another server (for example a local `llama-server`) and the
+verdict path is unchanged. The download helper is oMLX-specific.
 
 ## Configuration
 
@@ -311,12 +475,23 @@ Full example: [`config.example.json`](config.example.json).
     "apiKey": "{env:OMLX_API_KEY}",       // oMLX may not require one
     "timeoutMs": 5000,
     "cacheTtlMs": 600000,
-    "cacheSize": 128
+    "cacheSize": 128,
+    "provision": {
+      "enabled": true,
+      "repo": "mlx-community/Qwen3-4B-Instruct-2507-4bit",
+      "adminApiKey": "{env:OMLX_ADMIN_API_KEY}",
+      "readSettingsKey": true,
+      "allowNonMlx": false
+    }
   },
 
   "pin": {
-    "switchThreshold": 0.12,              // keep incumbent unless challenger wins by this
+    "mode": "balanced",                   // cache | balanced | switch
+    "switchThreshold": 0.12,
     "idleTtlMs": 300000,
+    "maxAgeMs": 1800000,
+    "maxTurns": 8,
+    "costSwitchRatio": 4.0,
     "flipFlopTurns": 3,
     "cacheHitRatio": 0.8
   },
@@ -356,30 +531,10 @@ Full example: [`config.example.json`](config.example.json).
 }
 ```
 
-### Policies
-
-| Policy | Weights (cost / quality / latency) | Use when |
-|---|---|---|
-| `cost` (default) | 0.6 / 0.3 / 0.1 | You want the cheapest model that clears the bar, escalating only when needed |
-| `quality` | 0.1 / 0.8 / 0.1 | Quality matters more than spend |
-| `latency` | 0.2 / 0.2 / 0.6 | Interactive work; favours local and fast cloud models |
-
-Changing the policy clears pins so the next turn is scored from scratch.
-
-### Pool sources
-
-| Source | Behaviour |
-|---|---|
-| `favorites` | Your favourites in the host model picker, filtered against the live catalog. Empty favourites fall back to `available`. |
-| `list` | `pool.models: ["provider/model", "provider/model#variant"]` |
-| `available` | Every enabled chat model |
-
 Models without tool support, deprecated models, and models that cannot fit the
 turn are excluded automatically. Local models (loopback providers) are never
 chosen above complexity 2 unless you raise `limits.allowLocalForComplexity` or set
 a quality override.
-
-### Quality and latency overrides
 
 Model quality is a documented heuristic (price percentile, parameter size,
 context size, reasoning support), not a benchmark. Zero-cost local models get a
@@ -392,67 +547,6 @@ default quality of 0.35. If the heuristic misjudges a model you use, override it
 }
 ```
 
-## Subagent routing
-
-Subagents route independently, with their own pins, so an `explore` subagent can
-run cheap and fast while the parent stays on a strong model. Detection is via the
-child session's `parentID`; the agent identity comes from the session/agent
-metadata. The task prompt is classified exactly like a normal turn, with the
-agent's policy applied.
-
-Resolution order:
-
-1. An explicit model configured on the agent (respected as a forced pin unless
-   `subagents.overrideExplicitModel` is `true`).
-2. `subagents.agents[agentID]`.
-3. `subagents.default`.
-4. The global policy.
-
-The shipped defaults map the common agents sensibly:
-
-- `explore` — latency policy, tools required, at least 128k context: retrieval is
-  fast and context-heavy, not deeply clever.
-- `general` — cost policy with a 0.55 quality floor.
-- `review`, `plan` — quality policy with high floors.
-
-Loop escalation is per session: a subagent that keeps hitting the same tool error
-escalates itself to a stronger model and does not drag the parent with it. On a
-score tie, a child prefers the parent's current model to reuse the prompt cache.
-
-`/router history` marks subagent decisions and `/router stats` breaks down
-switches, judge usage, pruning, and escalation by agent.
-
-## Pinning: how "per turn" stays cache-aware
-
-The router decides every turn, but does not switch on noise. A session pins its
-model and keeps it while the pin is still adequate and the best alternative does
-not beat it by `pin.switchThreshold`. A pin is broken by a capability or context
-gate failure, a complexity jump of two or more, repeated tool failures, context
-overflow, a policy change, or idling past the TTL. A flip-flop guard prevents
-bouncing back to a model used in the last few turns.
-
-If you pick a model yourself (`/model`), that is respected as a forced pin until
-you run `/router auto`, the session compacts, or the model disappears. Compaction
-always clears the pin so the next turn re-routes.
-
-## Context optimiser
-
-When the assembled request fits the chosen model, **nothing is changed** —
-cache-safe by construction. When it does not fit, the optimiser works in order
-and stops as soon as the request fits:
-
-1. Deduplicate identical tool outputs, keeping the newest.
-2. Truncate tool outputs above `optimiser.maxToolTokens` to 60% head + 40% tail,
-   with a marker.
-3. Stub tool outputs older than the last `keepRecentToolOutputs`, largest first,
-   with a marker naming the tool and the omitted token count.
-
-System instructions, user text, the first user message, recent turns, and error
-outputs are protected. If pruning cannot fit the request, the optimiser stops,
-reports `overflow`, clears the pin, and lets OpenCode compact; the next turn
-routes to a model with a larger window. Compaction, title, and transient
-generation requests are never pruned or routed.
-
 ## Commands
 
 The `/router` surface runs in the **OpenCode TUI** (the plugin's TUI part), so
@@ -463,14 +557,17 @@ the CLI for headless `opencode run`/`serve`, OpenCode Desktop, and Kilo.
 |---|---|
 | `/router` | Navigable action menu: status, policy, pool, timing, history, judge, pin, toggles |
 | `/router status` | Compact status: state, judge, pins, timing, last decision |
+| `/router version` | Router version, host, core ABI, and config path |
+| `/router debug` | Diagnostics: paths, config digest, judge, pool, last decision, timing |
 | `/router on` / `/router off` | Enable or disable routing |
 | `/router policy` | Interactive picker for `cost` / `quality` / `latency`; clears pins |
+| `/router pin-mode` | Interactive picker for `cache` / `balanced` / `switch` |
 | `/router pool` | Interactive pool setup: favorites, explicit list, or all available; shows context, cost, and quality per model |
 | `/router history [n]` | Recent decisions, including subagents and judge/route time |
 | `/router timing [n]` | Local judge vs remote model vs tool time per turn |
 | `/router explain` | Readable why: chosen model, policy, verdict, top scores, and per-turn costs |
 | `/router pin` / `/router auto` | Force or release a model pin for this session |
-| `/router judge` | Probe oMLX directly: model, latency, sample verdict |
+| `/router judge` | Probe the judge: model, latency, sample verdict |
 | `/router subagents on\|off` | Toggle subagent routing |
 
 Menu items have descriptions and are navigable with the arrow keys, Enter, and
@@ -485,6 +582,8 @@ Works in any host, including Kilo, headless OpenCode, and CI:
 
 ```sh
 omlx-router status
+omlx-router version [--json]
+omlx-router debug [--json]
 omlx-router doctor
 omlx-router pool
 omlx-router history 20
@@ -492,6 +591,9 @@ omlx-router timing 20
 omlx-router config get policy
 omlx-router config set policy quality
 ```
+
+`version` prints the bare version for scripts; `version --json` adds the package
+name, ABI, host, and wasm path. `debug` is read-only and never prints secrets.
 
 ## Kilo limitations
 
@@ -514,6 +616,7 @@ use the `omlx-router` CLI and `config.json`.
 - API keys are read from your config/env and never logged. The oMLX admin key
   may be read from the local `~/.omlx/settings.json` (when allowed) solely for
   the local download login.
+- `omlx-router debug` prints a secret-free config digest, never key values.
 - State is local: `~/.local/state/omlx-router/<host>/`.
 
 ## Troubleshooting
@@ -526,6 +629,10 @@ use the `omlx-router` CLI and `config.json`.
 | Model switching visibly lags | Kilo boundary behaviour, or a host that rejects the switch; check the decision log |
 | Context overflow | The optimiser reports `overflow`; raise the pool's context floor or reduce `reserveOutputTokens` |
 | Config ignored | The file wins after first run; check `~/.config/omlx-router/config.json` and the drift warning in status |
+| Prices look stale | The host refreshes models.dev on its own schedule; `/router pool` reads the live catalog |
+
+When in doubt, run `/router debug` (TUI) or `omlx-router debug` (CLI) and include
+its output in a bug report. It contains no prompt text and no credentials.
 
 ## Development
 

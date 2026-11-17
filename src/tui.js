@@ -17,6 +17,8 @@ import {
   writePin,
 } from "./state.js"
 import { buildStatus, formatMilliseconds, formatStatus, formatTiming, formatTuiStatus } from "./status.js"
+import { collectDebug, formatDebug } from "./debug.js"
+import { ABI_VERSION, VERSION } from "./version.js"
 
 const HOST = "opencode"
 
@@ -416,6 +418,7 @@ async function openMenu(context) {
           description: "Route child sessions with their agent policy",
         },
         { title: "Help", value: "help", description: "Command reference" },
+        { title: "Diagnostics", value: "debug", description: "Version, paths, judge, pool, and the last decision" },
         { title: "Close", value: "close", description: "Close the router menu" },
       ],
     })
@@ -443,6 +446,17 @@ async function runCommand(context, input) {
     }
     case "status": {
       await show(context, formatTuiStatus(buildStatus({ host: HOST })))
+      return
+    }
+    case "version": {
+      await show(
+        context,
+        [`oMLX Router ${VERSION} · ${HOST} · ABI ${ABI_VERSION}`, `config  ${configPath()}`].join("\n"),
+      )
+      return
+    }
+    case "debug": {
+      await show(context, formatDebug(await collectDebug({ host: HOST })))
       return
     }
     case "on":
@@ -667,6 +681,8 @@ async function runCommand(context, input) {
           "/router auto",
           "/router judge [pull|status|cancel]",
           "/router subagents on|off",
+          "/router version",
+          "/router debug",
         ].join("\n"),
       )
       return

@@ -1,5 +1,22 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- `/router version` and `omlx-router version --json`: router version, host, ABI,
+  and wasm path for scripts and bug reports.
+- `/router debug` and `omlx-router debug [--json]`: read-only diagnostics with a
+  secret-free config digest, catalog/judge health, pins, last decision, and turn
+  timing. Available from the TUI menu as **Diagnostics**.
+
+### Changed
+
+- The README now leads with a "How it works" section covering the judge prompt
+  and floor, deterministic signals, gates and scoring, pin modes, the context
+  optimiser, the three cache layers, and subagent policy, with npm/CI/license
+  badges and a quick start.
+
 ## 0.1.2 — 2026-11-16
 
 ### Added

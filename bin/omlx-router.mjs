@@ -12,8 +12,9 @@ import {
 import { readHostModelState } from "../src/pool.js"
 import { buildStatus, formatMilliseconds, formatStatus, formatTiming } from "../src/status.js"
 import { readDecisions, readTurns, summariseTurns } from "../src/state.js"
-import { VERSION } from "../src/version.js"
+import { ABI_VERSION, VERSION } from "../src/version.js"
 import { loadCore } from "../src/wasm.js"
+import { collectDebug, formatDebug } from "../src/debug.js"
 
 const argv = process.argv.slice(2)
 
@@ -47,6 +48,7 @@ Usage:
   omlx-router timing [n] [--json]
   omlx-router pool
   omlx-router doctor
+  omlx-router debug [--json]
   omlx-router judge pull [repo] [--yes]
   omlx-router judge status
   omlx-router judge cancel [task]
@@ -338,6 +340,15 @@ async function doctorCommand() {
   }
 }
 
+async function debugCommand() {
+  const info = await collectDebug({ host, core: await coreInfo() })
+  if (wantsJson) {
+    console.log(JSON.stringify(info, null, 2))
+    return
+  }
+  console.log(formatDebug(info))
+}
+
 try {
   switch (command) {
     case "status":
@@ -358,14 +369,35 @@ try {
     case "doctor":
       await doctorCommand()
       break
+    case "debug":
+      await debugCommand()
+      break
     case "judge":
       await judgeCommand()
       break
     case "version":
     case "--version":
-    case "-v":
+    case "-v": {
+      if (wantsJson) {
+        const core = await coreInfo()
+        console.log(
+          JSON.stringify(
+            {
+              name: "opencode-omlx-router",
+              version: VERSION,
+              abi: core.abi ?? ABI_VERSION,
+              host,
+              core: core.path ? core : null,
+            },
+            null,
+            2,
+          ),
+        )
+        break
+      }
       console.log(VERSION)
       break
+    }
     case "help":
     case "--help":
     case "-h":

@@ -135,6 +135,31 @@ test("/router status renders a dialog", async () => {
   expect(alert.message).toContain("policy")
 })
 
+test("/router version prints the router version", async () => {
+  environment()
+  const { context, messages, command } = fakeContext()
+  tui.setup(context)
+  await command().run("version")
+  const alert = messages.find((entry) => entry.kind === "alert")
+  expect(alert.message).toContain("oMLX Router")
+  expect(alert.message).toContain("ABI")
+  expect(alert.message).toContain("config")
+})
+
+test("/router debug renders a diagnostic bundle", async () => {
+  environment()
+  const { config } = readConfig({ write: true })
+  saveConfig({ ...config, judge: { ...config.judge, baseURL: "http://127.0.0.1:9/v1", timeoutMs: 250 } })
+  const { context, messages, command } = fakeContext()
+  tui.setup(context)
+  await command().run("debug")
+  const alert = messages.find((entry) => entry.kind === "alert")
+  expect(alert.message).toContain("oMLX Router")
+  expect(alert.message).toContain("judge")
+  expect(alert.message).toContain("unavailable")
+  expect(alert.message).not.toContain("apiKey")
+})
+
 function fakeAdminFetch() {
   const calls = []
   const fetchImpl = async (url, init = {}) => {
