@@ -45,11 +45,11 @@ Artifacts:
    running, `bun run judge:calibrate` (real judge verdicts/latency),
    `bun run routing:eval -- --runs 3` (routing vs an oracle; must have zero
    under-routes), and `bun run test:e2e:live` (real judge routing).
-6. `jj describe -m "release: v0.1.2"`, `jj new`.
+6. `jj describe -m "release: v0.2.0"`, `jj new`.
 
 ## Publish to npm
 
-The release is `@231self/opencode-omlx-router@0.1.2` (2026-11-16).
+The release is `@231self/opencode-omlx-router@0.2.0` (2026-11-17).
 
 ```sh
 npm login                       # or set NPM_TOKEN for CI publishing
@@ -66,9 +66,9 @@ commit a token.
 ```sh
 jj bookmark set main -r @-
 jj git push -b main
-jj tag set v0.1.2 -r main
-jj git push --tag v0.1.2
-gh release create v0.1.2 --title v0.1.2 --notes-file CHANGELOG.md
+jj tag set v0.2.0 -r main
+jj git push --tag v0.2.0
+gh release create v0.2.0 --title v0.2.0 --notes-file CHANGELOG.md
 ```
 
 CI (`.github/workflows/ci.yml`) must be green first: rustfmt, clippy, Rust
@@ -80,7 +80,7 @@ gate.
 ```sh
 mkdir -p /tmp/omlx-verify && cd /tmp/omlx-verify
 npm pack @231self/opencode-omlx-router
-tar -tzf 231self-opencode-omlx-router-0.1.2.tgz | head
+tar -tzf 231self-opencode-omlx-router-0.2.0.tgz | head
 ```
 
 Then install it as a consumer (below) in a scratch project and confirm a
@@ -88,7 +88,7 @@ decision is logged in `~/.local/state/omlx-router/opencode/decisions.jsonl`.
 The prompt harness can drive the installed package directly:
 
 ```sh
-npm install ./231self-opencode-omlx-router-0.1.2.tgz
+npm install ./231self-opencode-omlx-router-0.2.0.tgz
 bun tests/e2e/run.mjs --only judge-cost --package "$PWD/node_modules/@231self/opencode-omlx-router"
 bun tests/e2e/run.mjs --only kilo-boundary --package "$PWD/node_modules/@231self/opencode-omlx-router"
 ```
