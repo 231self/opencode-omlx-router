@@ -33,6 +33,10 @@ deterministic triage, context-fit gate, cache-aware pinning, loop escalation,
 decision logging — and drops the heavy machinery (HyDRA/ONNX embeddings,
 benchmark calibration, virtual cost, planning delegate).
 
+The pool can mix cloud models with local oMLX or llama.cpp models. Loopback
+providers are priced at zero, so a capable local model can take routine turns
+while cloud models handle the hard ones.
+
 ## Quick start
 
 ```sh
@@ -61,6 +65,7 @@ turn picked its model, and `/router debug` prints the diagnostic bundle.
 - [Configuration reference](docs/configuration.md) — every key, defaults, examples.
 - [Troubleshooting](docs/troubleshooting.md) — symptoms, evidence, reset.
 - [Building and releasing](docs/releasing.md) — build, pack, publish, tag, consumer install.
+- [Benchmarks](docs/benchmarks/) — routing/cost suites and the live quality eval.
 - [Design spec](docs/specs/2026-11-15-opencode-omlx-router-design.md) and
   [implementation plan](docs/plans/2026-11-15-implementation.md).
 - [Development notes](docs/development.md) — probe results, verification, limits.
@@ -521,6 +526,34 @@ The router detects loopback providers, prices them at zero
 hard work, so a local 27B can take those turns. Oversized local models still
 lose to cloud models when the turn requires more; set `quality.overrides` when
 you have a real measurement.
+
+## Benchmarks
+
+Modelled costs from published per-million-token prices, decisions from the real
+WASM core with recorded verdicts, and an 80% cache-read assumption on repeated
+turns. These measure routing and cost, not answer quality.
+
+| Scenario | Short session (10 turns, 7k–34k) | Long session (24 turns, 12k–208k) |
+|---|---:|---:|
+| Router balanced | $0.444 (-50%) · 10/10 | $4.212 (-37%) · 24/24 |
+| Router switch | $0.409 (-54%) · 10/10 | $4.190 (-38%) · 24/24 |
+| Always frontier | $0.893 · 10/10 | $6.723 · 24/24 |
+| Static complexity tiers | $0.690 (-23%) · 10/10 | $8.020 (+19%) · 24/24 |
+| Fixed cheap model | $0.027 · 6/10 | $0.252 · 14/24 |
+
+The short session favours `switch`; the long session favours `cache` or
+`balanced`, because repeated cold prefills at 200k cost more than keeping the
+incumbent cached. The router pool in both suites includes a local 27B and 4B at
+zero cost.
+
+Full method and caveats:
+[short session](docs/benchmarks/2026-11-17-routing.md) ·
+[long session](docs/benchmarks/2026-11-17-routing-long.md) ·
+[live quality eval](docs/benchmarks/2026-11-17-quality.md).
+
+The live eval runs eight small coding tasks through fixed models with
+deterministic checks. All three models pass 8/8; the suite is at its ceiling, so
+it does not yet separate cheap from frontier models.
 
 ## Configuration
 
