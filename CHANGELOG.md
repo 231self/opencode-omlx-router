@@ -11,6 +11,9 @@
   model for a cooldown, clears the pin, and queues a same-turn redirect to the
   next candidate through OpenCode's `model.resolve` hook. Config under
   `failover`; the blocklist shows in `/router debug`.
+- `bun run bench`: a deterministic routing and cost benchmark over a ten-turn
+  session, comparing fixed models, a simulated tier baseline, and the router in
+  `balanced` and `switch` modes. Results live in `docs/benchmarks/`.
 - `/router version` and `omlx-router version --json`: router version, host, ABI,
   and wasm path for scripts and bug reports.
 - `/router debug` and `omlx-router debug [--json]`: read-only diagnostics with a
@@ -23,6 +26,13 @@
   and floor, deterministic signals, gates and scoring, pin modes, the context
   optimiser, the three cache layers, and subagent policy, with npm/CI/license
   badges and a quick start.
+
+### Fixed
+
+- A pin no longer holds an inadequate model when complexity rises gradually. The
+  +2 jump rule missed a 1→2→3 climb, so a cheap incumbent could stay above the
+  turn's required quality; it now releases with reason `quality-gate` and
+  selects the best adequate candidate.
 
 ## 0.1.2 — 2026-11-16
 

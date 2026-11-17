@@ -690,6 +690,7 @@ bun run test:e2e       # live prompt tests against OpenCode + Kilo (needs oMLX)
 bun run test:e2e:live  # one prompt through the real oMLX judge
 bun run judge:calibrate # real judge verdicts + latency across six cases
 bun run routing:eval    # real judge routing vs a ground-truth oracle
+bun run bench           # deterministic routing/cost benchmark
 ```
 
 The prompt tests start real OpenCode/Kilo sessions, inject a deterministic

@@ -265,14 +265,19 @@ pub fn select(
                     && current.cost_usd > candidate.cost_usd * settings.pin.cost_switch_ratio
             });
             let cost_release = cost_candidate.is_some();
+            // A gradual complexity rise does not trip the +2 jump rule, so an
+            // incumbent that no longer clears the turn's required quality must
+            // be released instead of coasting on its score.
+            let adequate = current.quality + 1e-9 >= current.required;
 
-            // The incumbent is still the best candidate and there is no cheaper
-            // adequate alternative: refresh the pin.
+            // The incumbent is still the best candidate, is adequate, and has no
+            // cheaper adequate alternative: refresh the pin.
             if best
                 .model
                 .reference()
                 .same_model(&current.model.reference())
                 && !cost_release
+                && adequate
             {
                 state.last_turn_at = now;
                 state.last_turn_class = envelope.turn_class.clone();
@@ -292,7 +297,8 @@ pub fn select(
             let delta = best.score - current.score;
             let challenger_blocked = is_blocked(&state, &best.model.reference(), turnover);
             let within_threshold = pin_mode == "cache" || delta <= settings.pin.switch_threshold;
-            let keep = !idle && !jump && !age && !turns && !cost_release && within_threshold;
+            let keep =
+                adequate && !idle && !jump && !age && !turns && !cost_release && within_threshold;
             if keep
                 || (!cost_release
                     && challenger_blocked
@@ -312,7 +318,9 @@ pub fn select(
                     switched,
                 };
             }
-            reason = if idle {
+            reason = if !adequate {
+                "quality-gate".to_string()
+            } else if idle {
                 "idle-switch".to_string()
             } else if jump {
                 "complexity-jump".to_string()
@@ -325,7 +333,14 @@ pub fn select(
             } else {
                 "better-model".to_string()
             };
-            chosen_candidate = Some(cost_candidate.unwrap_or_else(|| best.clone()));
+            chosen_candidate = Some(if adequate {
+                cost_candidate.unwrap_or_else(|| best.clone())
+            } else {
+                choose(candidates, mode, |candidate| {
+                    candidate.quality + 1e-9 >= candidate.required
+                })
+                .unwrap_or_else(|| best.clone())
+            });
             switched = true;
         }
     }
@@ -767,6 +782,37 @@ mod tests {
         );
         assert_eq!(selection.chosen.id, "b");
         assert_eq!(selection.reason, "cheaper-model");
+    }
+
+    #[test]
+    fn an_inadequate_incumbent_is_released_without_a_complexity_jump() {
+        let mut candidates = vec![
+            candidate("a", 0.80, 0.55, 1.0),
+            candidate("b", 0.70, 0.85, 2.0),
+        ];
+        for candidate in &mut candidates {
+            candidate.required = 0.65;
+        }
+        let pin = Pin {
+            model: Some(candidates[0].model.reference()),
+            since: 900.0,
+            last_turn_at: 950.0,
+            last_turn_class: "routine".to_string(),
+            last_complexity: 3,
+            ..Pin::default()
+        };
+        let selection = select(
+            &candidates,
+            &envelope(),
+            &verdict(3),
+            &settings(),
+            Some(&pin),
+            1000.0,
+            "judge",
+            Mode::Decide,
+        );
+        assert_eq!(selection.chosen.id, "b");
+        assert_eq!(selection.reason, "quality-gate");
     }
 
     #[test]
