@@ -1,0 +1,1 @@
+Edit README.md only. Replace "npm install old-pkg" with "bun add new-pkg". Change the broken link [docs](./missing.md) to [docs](./docs.md). Do not add files.

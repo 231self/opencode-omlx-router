@@ -1,0 +1,1 @@
+Implement chunk(array, size) in src/chunk.js. chunk([1, 2, 3, 4, 5], 2) returns [[1, 2], [3, 4], [5]]. An empty array returns []. A size that is not a positive integer throws an Error. Do not add files.

@@ -54,6 +54,7 @@
     "judge:calibrate": "bun tests/judge-calibration.mjs",
     "routing:eval": "bun tests/routing-eval.mjs",
     "bench": "bun tests/benchmark.mjs",
-    "bench:long": "bun tests/benchmark.mjs --long"
+    "bench:long": "bun tests/benchmark.mjs --long",
+    "quality:eval": "bun tests/quality-eval.mjs"
   }
 }

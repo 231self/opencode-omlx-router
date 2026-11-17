@@ -1,0 +1,1 @@
+Rename calcTotal to calculateTotal in src/math.js and src/app.js. Keep behavior unchanged and leave no calcTotal references.

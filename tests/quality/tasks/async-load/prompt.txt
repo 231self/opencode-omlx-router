@@ -1,0 +1,1 @@
+Fix src/load.js so loadValue() returns the number 7 synchronously. It currently returns a Promise. Do not add files.

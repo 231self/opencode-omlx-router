@@ -1,0 +1,1 @@
+Fix the bug in src/sum.js. sum(2, 3) must return 5, sum(-1, 1) must return 0, and sum(0, 0) must return 0. Do not add files.

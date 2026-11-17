@@ -1,0 +1,1 @@
+Extract the duplicated formatName function into a new src/format.js as a named export. Import it from src/users.js and src/orders.js and remove the local copies. Keep behavior unchanged.

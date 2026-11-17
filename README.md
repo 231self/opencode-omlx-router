@@ -716,6 +716,7 @@ bun run judge:calibrate # real judge verdicts + latency across six cases
 bun run routing:eval    # real judge routing vs a ground-truth oracle
 bun run bench           # deterministic routing/cost benchmark
 bun run bench:long      # the same at 12k–208k context
+bun run quality:eval    # live task-quality eval (spends provider tokens)
 ```
 
 The prompt tests start real OpenCode/Kilo sessions, inject a deterministic

@@ -1,0 +1,1 @@
+Harden parseAge in src/age.js. It must return 42 for "42". It must throw an Error for "abc", "-3", and "1.5". Do not add files.

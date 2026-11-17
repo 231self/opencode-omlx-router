@@ -15,6 +15,9 @@
   model for a cooldown, clears the pin, and queues a same-turn redirect to the
   next candidate through OpenCode's `model.resolve` hook. Config under
   `failover`; the blocklist shows in `/router debug`.
+- `bun run quality:eval`: eight verifiable coding tasks run through OpenCode
+  with fixed models, graded by deterministic checks. Results live in
+  `docs/benchmarks/`.
 - `bun run bench`: a deterministic routing and cost benchmark over a ten-turn
   session, comparing fixed models, a simulated tier baseline, and the router in
   `cache`, `balanced`, and `switch` modes. `bun run bench:long` repeats it from

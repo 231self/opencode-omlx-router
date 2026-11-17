@@ -1,0 +1,1 @@
+Edit src/config.js so port uses process.env.PORT when it is a non-empty value, and falls back to 3000 when PORT is missing or empty. Do not add files.
