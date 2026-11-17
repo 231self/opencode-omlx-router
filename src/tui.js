@@ -10,6 +10,14 @@ import {
 } from "./provision.js"
 import { readHostModelState, resolvePool } from "./pool.js"
 import {
+  loadQualityScores,
+  qualityCacheAgeMs,
+  qualityCachePath,
+  readQualityCache,
+  refreshQuality,
+  qualitySource,
+} from "./quality.js"
+import {
   clearPin,
   clearPins,
   readDecisions,
@@ -89,16 +97,26 @@ function weightsReport(config) {
 }
 
 function poolLines(config, models, providers) {
-  const resolved = resolvePool({ models, providers, config, host: HOST })
+  const resolved = resolvePool({
+    models,
+    providers,
+    config,
+    host: HOST,
+    qualityScores: loadQualityScores({ config }),
+  })
   const lines = [`source ${resolved.source} · ${resolved.pool.length} usable · ${resolved.candidates} available`]
   for (const model of resolved.pool) {
+    const quality =
+      model.qualityOverride != null
+        ? `${Number(model.qualityOverride).toFixed(2)}${model.qualitySource ? ` (${model.qualitySource})` : ""}`
+        : "auto"
     lines.push(
       [
         `${model.providerID}/${model.modelID}${model.variant && model.variant !== "default" ? `#${model.variant}` : ""}`,
         `ctx=${model.limit.context}`,
         `cost=${model.local && config.pool.localCostZero !== false ? "free (local)" : formatCost(model.cost)}`,
         `local=${model.local ? "yes" : "no"}`,
-        `quality=${model.qualityOverride ?? "auto"}`,
+        `quality=${quality}`,
       ].join(" · "),
     )
   }
@@ -108,6 +126,16 @@ function poolLines(config, models, providers) {
   lines.push("set models: omlx-router config set pool.source list")
   lines.push(`            omlx-router config set pool.models '["provider/model", "..."]'`)
   return lines.join("\n")
+}
+
+function formatAge(ms) {
+  const value = Number(ms)
+  if (!Number.isFinite(value)) return "unknown"
+  const minutes = Math.floor(value / 60_000)
+  if (minutes < 60) return `${minutes}m`
+  const hours = Math.floor(minutes / 60)
+  if (hours < 48) return `${hours}h`
+  return `${Math.floor(hours / 24)}d`
 }
 
 function formatCost(cost) {
@@ -425,6 +453,7 @@ async function openMenu(context) {
         { title: "Policy", value: "policy", description: "Cost / quality / latency; clears pins when changed" },
         { title: "Pin mode", value: "pin-mode", description: "Cache, balanced, or switch every turn" },
         { title: "Pool", value: "pool", description: "Models available to the router and how to edit them" },
+        { title: "Quality scores", value: "quality", description: "LMArena score source, cache age, and refresh" },
         { title: "Timing", value: "timing", description: "Local judge vs remote model vs tool time" },
         { title: "History", value: "history", description: "Recent per-turn decisions, including subagents" },
         { title: "Explain last decision", value: "explain", description: "Why this session chose or kept its model" },
@@ -570,6 +599,34 @@ async function runCommand(context, input) {
     }
     case "pool": {
       await poolMenu(context)
+      return
+    }
+    case "quality": {
+      const action = rest[0] ?? "status"
+      if (action === "refresh") {
+        try {
+          const cache = await refreshQuality({ config })
+          await show(context, `LMArena · ${cache.count} models · refreshed`)
+        } catch (error) {
+          await show(context, `quality refresh failed: ${error?.message ?? error}`)
+        }
+        return
+      }
+      const source = qualitySource(config)
+      const cache = readQualityCache()
+      if (!cache) {
+        await show(context, `source   ${source}\ncache    none\nrun /router quality refresh`)
+        return
+      }
+      await show(
+        context,
+        [
+          `source   ${cache.source} · ${cache.config}`,
+          `models   ${cache.count}`,
+          `age      ${formatAge(qualityCacheAgeMs(cache))}`,
+          `cache    ${qualityCachePath()}`,
+        ].join("\n"),
+      )
       return
     }
     case "history": {
@@ -722,6 +779,7 @@ async function runCommand(context, input) {
           "/router policy custom",
           "/router pin-mode [cache|balanced|switch]",
           "/router pool",
+          "/router quality [refresh]",
           "/router history [n]",
           "/router timing [n]",
           "/router explain",

@@ -1,6 +1,7 @@
 import { readConfig } from "./config.js"
 import { Judge } from "./judge.js"
 import { resolvePool } from "./pool.js"
+import { loadQualityScores } from "./quality.js"
 import { applyPlan, buildOptimiseRequest } from "./optimiser.js"
 import {
   appendDecision,
@@ -228,6 +229,14 @@ export class Router {
     return found ? { ...found, providerID: found.providerID, id: found.id ?? found.modelID } : contextModel
   }
 
+  qualityScores(config) {
+    const now = Date.now()
+    if (this.qualityCache && now - this.qualityCache.at < 60_000) return this.qualityCache.value
+    const value = loadQualityScores({ config, env: this.env })
+    this.qualityCache = { at: now, value }
+    return value
+  }
+
   async prompt(event) {
     const promptStarted = Date.now()
     try {
@@ -251,7 +260,14 @@ export class Router {
       }
 
       const { models, providers } = await this.catalog()
-      const resolved = resolvePool({ models, providers, config, host: this.host, env: this.env })
+      const resolved = resolvePool({
+        models,
+        providers,
+        config,
+        host: this.host,
+        env: this.env,
+        qualityScores: this.qualityScores(config),
+      })
       const pool = blocked.length
         ? resolved.pool.filter(
             (model) =>

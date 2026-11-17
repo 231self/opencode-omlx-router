@@ -175,9 +175,30 @@ are not treated as provider failures.
 
 ## `quality` and `latency`
 
+| Key | Default | Notes |
+|---|---|---|
+| `source` | `"lmarena"` | `lmarena` fetches public scores; `manual` uses overrides and heuristics |
+| `category` | `"webdev"` | LMArena subset; `webdev` is the Code Arena |
+| `refreshHours` | `24` | Cache age before a background refresh |
+| `timeoutMs` | `10000` | Dataset request timeout |
+| `lmarena.dataset` | `lmarena-ai/leaderboard-dataset` | Public dataset |
+| `lmarena.config` | `webdev` | Dataset configuration |
+| `lmarena.split` | `latest` | Leaderboard snapshot |
+| `overrides` | `{}` | Manual `provider/modelID` scores; always win |
+
+Scores come from the public LMArena dataset (CC-BY-4.0). The adapter fetches it
+from the Hugging Face datasets server once per refresh, caches it at
+`~/.local/state/omlx-router/quality.json`, and maps the Code Arena rank onto the
+router's 0..1 quality scale (best 0.97, last 0.35). Unmatched models keep the
+heuristic; check `/router quality` for the cache age and `/router pool` for the
+score used per model.
+
 ```jsonc
 {
-  "quality": { "overrides": { "omlx/Qwen3.8-27B-MLX-4bit": 0.72 } },
+  "quality": {
+    "overrides": { "omlx/Qwen3.8-27B-MLX-4bit": 0.72 },
+    "source": "lmarena"
+  },
   "latency": {
     "overrides": { "openai/gpt-6.1-sol": 1400 },
     "localProviders": ["omlx"]
@@ -185,9 +206,9 @@ are not treated as provider failures.
 }
 ```
 
-Quality is a documented heuristic (price percentile, parameter size, context
-size, reasoning support), not a benchmark. Zero-cost local models default to
-0.35. Overrides are keyed `provider/modelID`.
+Without a score, quality is a documented heuristic (price percentile, parameter
+size, context size, reasoning support), not a benchmark. Free local models use
+the size tiers above. Overrides are keyed `provider/modelID`.
 
 ## `subagents`
 

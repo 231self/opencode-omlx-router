@@ -12,6 +12,13 @@ import {
   provisionHint,
 } from "../src/provision.js"
 import { readHostModelState } from "../src/pool.js"
+import {
+  qualityCacheAgeMs,
+  qualityCachePath,
+  qualitySource,
+  readQualityCache,
+  refreshQuality,
+} from "../src/quality.js"
 import { buildStatus, formatMilliseconds, formatStatus, formatTiming } from "../src/status.js"
 import { readDecisions, readTurns, summariseTurns } from "../src/state.js"
 import { ABI_VERSION, VERSION } from "../src/version.js"
@@ -49,6 +56,7 @@ Usage:
   omlx-router history [n] [--json]
   omlx-router timing [n] [--json]
   omlx-router pool
+  omlx-router quality [status|refresh]
   omlx-router doctor
   omlx-router debug [--json]
   omlx-router judge pull [repo] [--yes]
@@ -362,6 +370,35 @@ async function doctorCommand() {
   }
 }
 
+async function qualityCommand() {
+  const action = rest[0] ?? "status"
+  const { config } = readConfig({ write: false })
+  if (action === "refresh") {
+    try {
+      const cache = await refreshQuality({ config })
+      console.log(`refreshed LMArena ${cache.config} · ${cache.count} models`)
+      console.log(`cache ${qualityCachePath()}`)
+    } catch (error) {
+      console.error(`quality refresh failed: ${error?.message ?? error}`)
+      process.exitCode = 1
+    }
+    return
+  }
+  const source = qualitySource(config)
+  const cache = readQualityCache()
+  console.log(`source ${source}`)
+  if (!cache) {
+    console.log("cache  none; run: omlx-router quality refresh")
+    return
+  }
+  const age = qualityCacheAgeMs(cache)
+  const minutes = Math.floor((Number(age) || 0) / 60_000)
+  console.log(`config ${cache.config}`)
+  console.log(`models ${cache.count}`)
+  console.log(`age    ${minutes < 60 ? `${minutes}m` : `${Math.floor(minutes / 60)}h`}`)
+  console.log(`cache  ${qualityCachePath()}`)
+}
+
 async function debugCommand() {
   const info = await collectDebug({ host, core: await coreInfo() })
   if (wantsJson) {
@@ -390,6 +427,9 @@ try {
       break
     case "doctor":
       await doctorCommand()
+      break
+    case "quality":
+      await qualityCommand()
       break
     case "debug":
       await debugCommand()

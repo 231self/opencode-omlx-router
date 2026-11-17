@@ -32,6 +32,7 @@ export const BASE_CONFIG = {
     cacheSize: 128,
   },
   quality: {
+    source: "manual",
     overrides: {
       [FLASH]: 0.55,
       [PRO]: 0.8,

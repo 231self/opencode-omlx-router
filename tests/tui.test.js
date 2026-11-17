@@ -5,6 +5,7 @@ import path from "node:path"
 
 import tui from "../src/tui.js"
 import { readConfig, saveConfig } from "../src/config.js"
+import { writeQualityCache } from "../src/quality.js"
 import { appendDecision, appendTurn, sessionHash } from "../src/state.js"
 
 function environment() {
@@ -133,6 +134,20 @@ test("/router status renders a dialog", async () => {
   const alert = messages.find((entry) => entry.kind === "alert")
   expect(alert.message).toContain("oMLX Router")
   expect(alert.message).toContain("policy")
+})
+
+test("/router quality reports the cached score source", async () => {
+  environment()
+  writeQualityCache(
+    { source: "lmarena", config: "webdev", fetchedAt: Date.now(), count: 42, scores: {} },
+    process.env,
+  )
+  const { context, messages, command } = fakeContext()
+  tui.setup(context)
+  await command().run("quality")
+  const alert = messages.find((entry) => entry.kind === "alert")
+  expect(alert.message).toContain("lmarena")
+  expect(alert.message).toContain("42")
 })
 
 test("/router policy custom prints the active weights", async () => {

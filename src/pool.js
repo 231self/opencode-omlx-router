@@ -2,6 +2,8 @@ import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 
+import { qualityForModel } from "./quality.js"
+
 export function favoritesPath(host, env = process.env) {
   return env.OMLX_ROUTER_FAVORITES || path.join(os.homedir(), ".local", "state", host, "model.json")
 }
@@ -71,7 +73,14 @@ function catalogKey(model) {
 }
 
 /** Resolve a configured pool source against the live model catalog. */
-export function resolvePool({ models = [], providers = [], config, host = "opencode", env = process.env } = {}) {
+export function resolvePool({
+  models = [],
+  providers = [],
+  config,
+  host = "opencode",
+  env = process.env,
+  qualityScores = null,
+} = {}) {
   const warnings = []
   const state = readHostModelState(host, env)
   const baseURLs = providerBaseURLs(providers)
@@ -158,6 +167,12 @@ export function resolvePool({ models = [], providers = [], config, host = "openc
   const pool = filtered.map(({ key, model, variant, local }) => {
     const id = model.id ?? model.modelID
     const qualityKey = `${model.providerID}/${id}`
+    const manual = config?.quality?.overrides?.[qualityKey]
+    const scored = qualityForModel(qualityScores, {
+      providerID: model.providerID,
+      id,
+      name: model.name,
+    })
     return {
       providerID: model.providerID,
       modelID: id,
@@ -176,7 +191,8 @@ export function resolvePool({ models = [], providers = [], config, host = "openc
       },
       reasoning: hasReasoning(model),
       status: model.status ?? "active",
-      qualityOverride: config?.quality?.overrides?.[qualityKey] ?? null,
+      qualityOverride: manual ?? scored?.quality ?? null,
+      qualitySource: manual != null ? "override" : scored ? "lmarena" : null,
       latencyOverrideMs: config?.latency?.overrides?.[qualityKey] ?? null,
     }
   })

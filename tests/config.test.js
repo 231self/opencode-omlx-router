@@ -90,6 +90,11 @@ test("local providers are zero-cost by default", () => {
   expect(DEFAULT_CONFIG.pool.localCostZero).toBe(true)
 })
 
+test("quality scores use the keyless LMArena source by default", () => {
+  expect(DEFAULT_CONFIG.quality.source).toBe("lmarena")
+  expect(DEFAULT_CONFIG.quality.refreshHours).toBe(24)
+})
+
 test("custom policy weights layer over presets and per class", () => {
   const config = {
     policy: "cost",

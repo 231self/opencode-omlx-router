@@ -2,6 +2,7 @@ import os from "node:os"
 
 import { readConfig } from "./config.js"
 import { judgeAvailability } from "./provision.js"
+import { qualityCacheAgeMs, qualitySource, readQualityCache } from "./quality.js"
 import { readDecisions, readTurns, summariseTurns } from "./state.js"
 import { buildStatus, formatMilliseconds, modelLabel } from "./status.js"
 import { ABI_VERSION, VERSION } from "./version.js"
@@ -105,6 +106,7 @@ export async function collectDebug({
     )
   }
 
+  const cache = safe(() => readQualityCache(env), null)
   const decisions = safe(() => readDecisions(host, 1, env), [])
   const turns = safe(() => readTurns(host, 50, env), [])
   return {
@@ -122,6 +124,12 @@ export async function collectDebug({
     blocked: status.blocked ?? [],
     statusError: status.error ?? null,
     judge,
+    quality: {
+      source: qualitySource(config),
+      cache: cache
+        ? { config: cache.config, count: cache.count, ageMs: qualityCacheAgeMs(cache) }
+        : null,
+    },
     config: digest,
     lastDecision: decisions[0] ?? null,
     timing: safe(() => summariseTurns(turns, 20), null),
@@ -138,6 +146,7 @@ export function formatDebug(info) {
     `state    ${shortPath(info.stateDir)}`,
     `routing  ${info.enabled ? "enabled" : "disabled"} · policy ${config.policy} · pool ${config.pool?.source}`,
     `judge    ${config.judge?.model} · ${hostLabel(config.judge?.baseURL)} · ${judgeLine(judge)}`,
+    `quality  ${qualityLine(info.quality)}`,
     `pins     ${info.pins}${info.pinModels?.length ? ` · ${info.pinModels.map(modelLabel).join(", ")}` : ""}`,
   ]
   if (info.lastDecision) {
@@ -166,6 +175,15 @@ export function formatDebug(info) {
   )
   if (info.statusError) lines.push(`warning  ${info.statusError}`)
   return lines.join("\n")
+}
+
+function qualityLine(quality) {
+  if (!quality) return "unknown"
+  if (quality.source !== "lmarena") return "manual overrides"
+  if (!quality.cache) return "lmarena · cache empty; run /router quality refresh"
+  const minutes = Math.floor((Number(quality.cache.ageMs) || 0) / 60_000)
+  const age = minutes < 60 ? `${minutes}m` : `${Math.floor(minutes / 60)}h`
+  return `lmarena · ${quality.cache.count} models · ${age} old`
 }
 
 function judgeLine(judge) {

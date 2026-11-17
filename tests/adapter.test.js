@@ -15,7 +15,7 @@ function tempEnv() {
 function fakeContext(options = {}) {
   const hooks = new Map()
   const ctx = {
-    options,
+    options: { quality: { source: "manual" }, ...options },
     app: { version: "2.3.0" },
     location: { directory: "/tmp" },
     session: {

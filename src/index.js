@@ -1,5 +1,6 @@
 import { readConfig } from "./config.js"
 import { Router, refOf } from "./router.js"
+import { refreshQualityIfStale } from "./quality.js"
 import { TELEMETRY_EVENTS, Telemetry } from "./telemetry.js"
 import { loadCore } from "./wasm.js"
 
@@ -40,6 +41,14 @@ export default {
       telemetry,
       configOptions: ctx?.options ?? {},
     })
+
+    if (config.quality?.source === "lmarena") {
+      void refreshQualityIfStale({ config }).catch((cause) => {
+        if (config.debug) {
+          console.error("[omlx-router] quality refresh failed:", String(cause?.message ?? cause))
+        }
+      })
+    }
     await register("prompt", (event) => router.prompt(event))
     await register("context", (event) => router.context(event))
     await register("compaction", (event) => router.compaction(event))

@@ -527,6 +527,30 @@ hard work, so a local 27B can take those turns. Oversized local models still
 lose to cloud models when the turn requires more; set `quality.overrides` when
 you have a real measurement.
 
+## Quality scores
+
+Quality comes from the public LMArena leaderboard dataset by default, with no
+API key:
+
+- Code Arena subset (`webdev`), fetched from the Hugging Face datasets server.
+- Cached for 24 hours at `~/.local/state/omlx-router/quality.json`.
+- Rank percentile maps to 0..1: rank 1 is 0.97, the last entry 0.35.
+- `quality.overrides` always win. Unmatched models keep the heuristic or the
+  local size tier.
+- Local models are matched when the leaderboard has them.
+
+```sh
+omlx-router quality refresh     # fetch now
+omlx-router quality status      # cache age and size
+```
+
+In the TUI: `/router quality` and `/router quality refresh`. `/router pool`
+shows the score used for each model.
+
+Set `"quality": { "source": "manual" }` to turn the fetch off. The dataset is
+[CC-BY-4.0](https://huggingface.co/datasets/lmarena-ai/leaderboard-dataset);
+attribution to LMArena is required and kept here.
+
 ## Benchmarks
 
 Modelled costs from published per-million-token prices, decisions from the real
@@ -627,7 +651,11 @@ Full example: [`config.example.json`](config.example.json).
     "contextFitRatio": 0.9
   },
 
-  "quality": { "overrides": {} },         // {"provider/model": 0.0..1.0}
+  "quality": {
+    "overrides": {},                      // {"provider/model": 0.0..1.0} wins
+    "source": "lmarena",                  // lmarena | manual
+    "refreshHours": 24
+  },
   "latency": { "overrides": {}, "localProviders": [] },
 
   "subagents": {
@@ -739,6 +767,9 @@ use the `omlx-router` CLI and `config.json`.
 - The only text that leaves the machine is the truncated turn summary in the
   judge request, sent to the `judge.baseURL` you configure (localhost by
   default).
+- When `quality.source` is `lmarena`, the plugin fetches the public LMArena
+  dataset from Hugging Face. That request contains no prompts, files, or local
+  paths; set `quality.source` to `manual` to disable it.
 - API keys are read from your config/env and never logged. The oMLX admin key
   may be read from the local `~/.omlx/settings.json` (when allowed) solely for
   the local download login.

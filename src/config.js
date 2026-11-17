@@ -61,7 +61,18 @@ export const DEFAULT_CONFIG = {
     expectedOutputTokens: 1200,
     contextFitRatio: 0.9,
   },
-  quality: { overrides: {} },
+  quality: {
+    overrides: {},
+    source: "lmarena",
+    category: "webdev",
+    refreshHours: 24,
+    timeoutMs: 10000,
+    lmarena: {
+      dataset: "lmarena-ai/leaderboard-dataset",
+      config: "webdev",
+      split: "latest",
+    },
+  },
   latency: { overrides: {}, localProviders: [] },
   subagents: {
     enabled: true,

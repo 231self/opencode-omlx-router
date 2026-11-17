@@ -12,6 +12,10 @@
   loopback providers at zero, and free local models get size-based quality
   (under 3B 0.35, 3–8B 0.45, 8–30B 0.55, 30B+ 0.72). The benchmark includes a
   local 27B and 4B. A free adequate model now releases a paid incumbent.
+- Quality scores come from the public LMArena Code Arena dataset (CC-BY-4.0) by
+  default, keyless, cached daily. `quality.overrides` still win; unmatched
+  models keep the heuristic. `/router quality` and `omlx-router quality` show
+  the cache, and `refresh` fetches it.
 - `judge.provision.backend` (`auto` | `omlx` | `none`): llama.cpp and other
   OpenAI-compatible judge servers are detected, and the download commands print
   a setup recipe instead of failing on the oMLX admin API.
