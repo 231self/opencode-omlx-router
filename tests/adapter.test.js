@@ -28,11 +28,17 @@ function fakeContext(options = {}) {
   return { ctx, hooks }
 }
 
-test("setup registers the three session hooks and cleans up", async () => {
+test("setup registers session hooks and cleans up", async () => {
   tempEnv()
   const { ctx, hooks } = fakeContext()
   const dispose = await plugin.setup(ctx)
-  expect([...hooks.keys()].sort()).toEqual(["compaction", "context", "prompt"])
+  expect([...hooks.keys()].sort()).toEqual([
+    "compaction",
+    "context",
+    "experimental.model.resolve",
+    "prompt",
+    "retry",
+  ])
   expect(typeof dispose).toBe("function")
   await dispose()
   expect(hooks.size).toBe(0)

@@ -118,6 +118,7 @@ export async function collectDebug({
     enabled: status.enabled,
     pins: status.pins,
     pinModels: status.pinModels,
+    blocked: status.blocked ?? [],
     statusError: status.error ?? null,
     judge,
     config: digest,
@@ -150,6 +151,13 @@ export function formatDebug(info) {
     lines.push(
       `timing   judge ${formatMilliseconds(average.judgeMs)} · remote ${formatMilliseconds(average.modelMs)} · turn ${formatMilliseconds(average.turnMs)} (last ${info.timing.count})`,
     )
+  }
+  if (info.blocked?.length) {
+    const blocked = info.blocked
+      .slice(0, 3)
+      .map((entry) => `${entry.providerID}/${entry.id} (${entry.reason})`)
+      .join(", ")
+    lines.push(`blocked  ${info.blocked.length} · ${blocked}`)
   }
   const pool = config.pool ?? {}
   lines.push(

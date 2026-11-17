@@ -82,6 +82,23 @@ No download starts without a TUI confirmation or a CLI `y` / `--yes`. Downloads
 use oMLX's admin API (`/admin/api/hf/*`), so the model appears in oMLX's model
 directory and is rediscovered on completion. The admin key is never logged.
 
+### `failover`
+
+| Key | Default | Notes |
+|---|---|---|
+| `enabled` | `true` | Route around provider failures instead of hammering a dead model |
+| `cooldownMs` | `300000` | 429 cooldown; the model is excluded from routing |
+| `serverCooldownMs` | `60000` | 5xx, timeout, and overload cooldown |
+| `authCooldownMs` | `1800000` | 401/403 cooldown |
+| `redirectTtlMs` | `60000` | How long a queued same-turn redirect stays valid |
+| `retryDelayMs` | `1000` | Delay used only when the host decided not to retry |
+
+On a provider failure the plugin blocks the model for the session, clears the
+pin, and queues the next candidate from the last decision. OpenCode's
+`model.resolve` hook performs the swap on the retry; if it never fires, the
+blocked model is simply excluded from the next turn. 400-class request errors
+are not treated as provider failures.
+
 ## `pin`
 
 | Key | Default | Notes |

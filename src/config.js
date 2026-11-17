@@ -72,6 +72,14 @@ export const DEFAULT_CONFIG = {
     },
   },
   telemetry: { enabled: true },
+  failover: {
+    enabled: true,
+    cooldownMs: 300000,
+    serverCooldownMs: 60000,
+    authCooldownMs: 1800000,
+    redirectTtlMs: 60000,
+    retryDelayMs: 1000,
+  },
   debug: false,
 }
 

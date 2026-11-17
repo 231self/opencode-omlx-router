@@ -256,6 +256,16 @@ Even in `cache` or `balanced`, a pin is released by:
 Picking a model yourself (`/model`) becomes a forced pin until you run
 `/router auto`, the session compacts, or the model disappears.
 
+### Provider failover
+
+A 429, 5xx, timeout, or auth failure blocks the failed model for the session —
+5 min for rate limits, 1 min for server errors, 30 min for auth — clears the pin,
+and queues the next candidate from the last decision. OpenCode's `model.resolve`
+hook swaps it in on the retry; if the host never retries, the next turn simply
+routes around the blocked model. 400-class request errors are not treated as
+provider failures. `/router debug` shows active blocks, and `failover.enabled:
+false` restores plain host behaviour.
+
 ### Context optimiser
 
 When the assembled request fits, **nothing is changed** — cache-safe by
@@ -548,6 +558,17 @@ Full example: [`config.example.json`](config.example.json).
       "review":  { "policy": "quality", "qualityFloor": 0.75 },
       "plan":    { "policy": "quality", "qualityFloor": 0.8 }
     }
+  },
+
+  "telemetry": { "enabled": true },
+
+  "failover": {
+    "enabled": true,                      // route around provider failures
+    "cooldownMs": 300000,                 // 429 cooldown
+    "serverCooldownMs": 60000,            // 5xx / timeout cooldown
+    "authCooldownMs": 1800000,            // 401/403 cooldown
+    "redirectTtlMs": 60000,               // how long a queued redirect stays valid
+    "retryDelayMs": 1000                  // delay when the host would not retry
   },
 
   "debug": false

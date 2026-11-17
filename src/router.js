@@ -5,6 +5,7 @@ import { applyPlan, buildOptimiseRequest } from "./optimiser.js"
 import {
   appendDecision,
   clearPin,
+  readDecisions,
   readPin,
   readStats,
   sessionHash,
@@ -36,6 +37,85 @@ function decisionRef(decision) {
     id: decision.id,
     variant: decision.variant ?? "default",
   }
+}
+
+function label(reference) {
+  if (!reference) return "unknown"
+  return `${reference.providerID}/${reference.id ?? reference.modelID}`
+}
+
+/** Provider failures worth routing around, not merely retrying. */
+export function isFailoverError(error) {
+  const status = Number(error?.status) || 0
+  const type = String(error?.type ?? "")
+  if ([401, 403, 408, 429].includes(status) || status >= 500) return true
+  return /rate.?limit|overload|timeout|quota|unavailable|capacity/i.test(type)
+}
+
+export function cooldownFor(config, error) {
+  const failover = config?.failover ?? {}
+  const status = Number(error?.status) || 0
+  if (status === 401 || status === 403) return Number(failover.authCooldownMs) || 1_800_000
+  if (status === 429) return Number(failover.cooldownMs) || 300_000
+  return Number(failover.serverCooldownMs) || 60_000
+}
+
+/** Unexpired blocks from a session pin. */
+export function activeBlocks(pin, now = Date.now()) {
+  if (!Array.isArray(pin?.blocked)) return []
+  return pin.blocked.filter(
+    (block) => block && Number(block.until) > now && block.providerID && block.id,
+  )
+}
+
+function blockedModel(blocked, reference) {
+  if (!reference) return false
+  return blocked.some(
+    (block) =>
+      String(block.providerID) === String(reference.providerID) &&
+      String(block.id) === String(reference.id ?? reference.modelID),
+  )
+}
+
+function upsertBlock(blocked, reference, until, reason, now) {
+  const keep = (Array.isArray(blocked) ? blocked : [])
+    .filter((block) => block && Number(block.until) > now)
+    .filter(
+      (block) =>
+        !(
+          String(block.providerID) === String(reference.providerID) &&
+          String(block.id) === String(reference.id ?? reference.modelID)
+        ),
+    )
+  keep.push({
+    providerID: reference.providerID,
+    id: reference.id ?? reference.modelID,
+    until,
+    reason,
+  })
+  return keep.slice(-8)
+}
+
+/** Pick the next candidate below the failed model from the last decision. */
+function nextCandidate(last, failed, blocked) {
+  const top = Array.isArray(last?.top) ? last.top : []
+  for (const entry of top) {
+    const reference = {
+      providerID: entry.providerID,
+      id: entry.id ?? entry.modelID,
+      variant: entry.variant ?? "default",
+    }
+    if (!reference.providerID || !reference.id) continue
+    if (blockedModel(blocked, reference)) continue
+    if (
+      String(reference.providerID) === String(failed?.providerID) &&
+      String(reference.id) === String(failed?.id)
+    ) {
+      continue
+    }
+    return reference
+  }
+  return null
 }
 
 function countImages(files) {
@@ -165,9 +245,19 @@ export class Router {
       if (pin?.model && pin.lastApplied && current && !sameModel(current, pin.lastApplied)) {
         pin = { ...pin, forced: true, source: "user", model: current }
       }
+      const blocked = activeBlocks(pin)
+      if (pin?.model && blockedModel(blocked, pin.model)) {
+        pin = { ...pin, model: null, forced: false, source: "" }
+      }
 
       const { models, providers } = await this.catalog()
       const resolved = resolvePool({ models, providers, config, host: this.host, env: this.env })
+      const pool = blocked.length
+        ? resolved.pool.filter(
+            (model) =>
+              !blockedModel(blocked, { providerID: model.providerID, id: model.modelID }),
+          )
+        : resolved.pool
       if (config.debug) {
         console.log("[omlx-router] pool", {
           host: this.host,
@@ -205,7 +295,7 @@ export class Router {
           toolFailures: this.failures.get(sessionID)?.count ?? 0,
           turnClassHint: null,
         },
-        pool: resolved.pool,
+        pool: pool.length ? pool : resolved.pool,
         settings: config,
         pin: pinForRequest(pin),
         judge: { verdict: null, cached: false, unavailable: false },
@@ -298,6 +388,131 @@ export class Router {
       })
     } catch (error) {
       if (this.config().debug) console.error("[omlx-router] prompt failed:", String(error?.message ?? error))
+    }
+  }
+
+  /**
+   * Provider failure: block the model for a cooldown, clear the pin, and queue
+   * a same-turn redirect to the next candidate from the last decision.
+   */
+  retry(event) {
+    try {
+      const config = this.config()
+      if (config.failover?.enabled === false) return
+      const sessionID = event?.sessionID
+      const failed = refOf(event?.model)
+      if (!sessionID || !failed) return
+      if (!isFailoverError(event?.error)) return
+
+      const now = Date.now()
+      const cooldown = cooldownFor(config, event?.error)
+      const pin = readPin(this.host, sessionID, this.env) ?? {}
+      const blocked = upsertBlock(
+        pin.blocked,
+        failed,
+        now + cooldown,
+        String(event?.error?.status ?? event?.error?.type ?? "error"),
+        now,
+      )
+      const last = readDecisions(this.host, 1, this.env)[0] ?? null
+      const to = nextCandidate(last, failed, blocked)
+      writePin(
+        this.host,
+        sessionID,
+        {
+          ...pin,
+          blocked,
+          redirect: to ? { from: failed, to, at: now } : null,
+          model: null,
+          forced: false,
+          source: "failover",
+        },
+        this.env,
+      )
+      appendDecision(
+        this.host,
+        {
+          ts: now,
+          host: this.host,
+          role: pin.role ?? "root",
+          agent: "",
+          session: sessionHash(sessionID),
+          kind: "primary",
+          stage: to ? "failover/redirect" : "failover/blocked",
+          reason: "provider-error",
+          poolSize: 0,
+          chosen: label(to ?? failed),
+          pinned: false,
+          source: "failover",
+          judge: { used: false, cached: false },
+          applied: to ? "same-turn" : "none",
+          error: String(event?.error?.message ?? event?.error?.type ?? "provider error"),
+          top: [],
+          turnClass: "",
+          complexity: 0,
+          failover: {
+            from: label(failed),
+            to: to ? label(to) : null,
+            status: Number(event?.error?.status) || null,
+            until: now + cooldown,
+          },
+        },
+        this.env,
+      )
+      // Keep the host's own retry policy unless it gave up and we have a
+      // different model to try.
+      if (!event.decision?.retry && to) {
+        event.decision = { retry: true, delay: Number(config.failover?.retryDelayMs) || 1000 }
+      }
+    } catch (error) {
+      if (this.config().debug) console.error("[omlx-router] failover failed:", String(error?.message ?? error))
+    }
+  }
+
+  /** Swap the failed model for the queued redirect at request resolution. */
+  resolveModel(event) {
+    try {
+      const config = this.config()
+      if (config.failover?.enabled === false) return
+      const sessionID = event?.sessionID
+      if (!sessionID) return
+      if (event?.kind && event.kind !== "primary") return
+      const current = refOf(event?.model)
+      if (!current) return
+
+      const pin = readPin(this.host, sessionID, this.env) ?? {}
+      const redirect = pin.redirect
+      if (!redirect?.from || !redirect?.to) return
+      const ttl = Number(config.failover?.redirectTtlMs) || 60_000
+      if (Date.now() - Number(redirect.at ?? 0) > ttl) {
+        writePin(this.host, sessionID, { ...pin, redirect: null }, this.env)
+        return
+      }
+      if (!sameModel(current, redirect.from)) return
+      if (blockedModel(activeBlocks(pin), redirect.to)) return
+
+      event.model = {
+        providerID: redirect.to.providerID,
+        id: redirect.to.id,
+        ...(redirect.to.variant && redirect.to.variant !== "default"
+          ? { variant: redirect.to.variant }
+          : {}),
+      }
+      writePin(
+        this.host,
+        sessionID,
+        {
+          ...pin,
+          redirect: null,
+          model: redirect.to,
+          lastApplied: redirect.to,
+          forced: false,
+          source: "failover",
+        },
+        this.env,
+      )
+    } catch (error) {
+      if (this.config().debug) console.error("[omlx-router] failover resolve failed:", String(error?.message ?? error))
     }
   }
 

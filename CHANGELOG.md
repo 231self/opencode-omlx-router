@@ -4,6 +4,13 @@
 
 ### Added
 
+- `judge.provision.backend` (`auto` | `omlx` | `none`): llama.cpp and other
+  OpenAI-compatible judge servers are detected, and the download commands print
+  a setup recipe instead of failing on the oMLX admin API.
+- Failover on provider failures: a 429, 5xx, timeout, or auth error blocks the
+  model for a cooldown, clears the pin, and queues a same-turn redirect to the
+  next candidate through OpenCode's `model.resolve` hook. Config under
+  `failover`; the blocklist shows in `/router debug`.
 - `/router version` and `omlx-router version --json`: router version, host, ABI,
   and wasm path for scripts and bug reports.
 - `/router debug` and `omlx-router debug [--json]`: read-only diagnostics with a

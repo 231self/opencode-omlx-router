@@ -20,6 +20,7 @@ export function buildStatus({ host = "opencode", env = process.env, core = null 
   const { config, path, existed, error } = readConfig({ env, write: false })
 
   let pins = []
+  let blocked = []
   let last = null
   let stats = null
   let turns = []
@@ -27,6 +28,11 @@ export function buildStatus({ host = "opencode", env = process.env, core = null 
   let stateError = null
   try {
     pins = listPins(host, env)
+    blocked = pins.flatMap((pin) =>
+      (Array.isArray(pin?.blocked) ? pin.blocked : []).filter(
+        (entry) => entry && Number(entry.until) > Date.now(),
+      ),
+    )
     last = readDecisions(host, 1, env)[0] ?? null
     stats = readStats(host, env)
     turns = readTurns(host, 50, env)
@@ -52,6 +58,7 @@ export function buildStatus({ host = "opencode", env = process.env, core = null 
     stateDir: hostStateDir(host, env),
     pins: pins.length,
     pinModels: pins.slice(0, 3).map((pin) => pin.model ?? pin.chosen ?? null).filter(Boolean),
+    blocked,
     last,
     lastTurn: turns.at(-1) ?? null,
     timing,

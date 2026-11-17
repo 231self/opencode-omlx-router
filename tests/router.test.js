@@ -4,7 +4,7 @@ import os from "node:os"
 import path from "node:path"
 
 import { Router } from "../src/router.js"
-import { readDecisions, readPin, writePin } from "../src/state.js"
+import { appendDecision, readDecisions, readPin, writePin } from "../src/state.js"
 
 const MODELS = [
   {
@@ -173,6 +173,95 @@ test("does not switch when the decision matches the current model", async () => 
   })
   await router.prompt({ sessionID: "ses_1", prompt: { text: "continue", files: [] } })
   expect(switches).toEqual([])
+})
+
+test("retry blocks the failed model and queues the next candidate", () => {
+  const env = tempEnv()
+  appendDecision(
+    "opencode",
+    {
+      ts: 1,
+      session: "hash",
+      chosen: "deepseek/deepseek-flash",
+      top: [
+        { providerID: "deepseek", id: "deepseek-flash", variant: "default", score: 0.9 },
+        { providerID: "deepseek", id: "deepseek-v4-pro", variant: "default", score: 0.8 },
+      ],
+    },
+    env,
+  )
+  const { router } = harness({ env })
+  const event = {
+    sessionID: "ses_1",
+    model: { providerID: "deepseek", id: "deepseek-flash", variant: "default" },
+    error: { type: "rate-limit", message: "429 too many requests", status: 429 },
+    attempt: 2,
+    decision: { retry: true, delay: 100 },
+  }
+  router.retry(event)
+
+  const pin = readPin("opencode", "ses_1", env)
+  expect(pin.blocked).toHaveLength(1)
+  expect(pin.blocked[0].id).toBe("deepseek-flash")
+  expect(pin.blocked[0].until).toBeGreaterThan(Date.now())
+  expect(pin.redirect.to.id).toBe("deepseek-v4-pro")
+  expect(pin.model).toBe(null)
+
+  const next = {
+    sessionID: "ses_1",
+    kind: "primary",
+    model: { providerID: "deepseek", id: "deepseek-flash", variant: "default" },
+  }
+  router.resolveModel(next)
+  expect(next.model.id).toBe("deepseek-v4-pro")
+  expect(readPin("opencode", "ses_1", env).redirect).toBe(null)
+  expect(readDecisions("opencode", 1, env)[0].stage).toBe("failover/redirect")
+})
+
+test("retry ignores 400-class request errors", () => {
+  const env = tempEnv()
+  const { router } = harness({ env })
+  router.retry({
+    sessionID: "ses_1",
+    model: { providerID: "deepseek", id: "deepseek-flash", variant: "default" },
+    error: { type: "provider.invalid-request", message: "bad request", status: 400 },
+    attempt: 2,
+    decision: { retry: false },
+  })
+  expect(readPin("opencode", "ses_1", env)?.blocked).toBeUndefined()
+})
+
+test("routing skips a blocked model", async () => {
+  const env = tempEnv()
+  writePin(
+    "opencode",
+    "ses_1",
+    {
+      blocked: [
+        {
+          providerID: "deepseek",
+          id: "deepseek-flash",
+          until: Date.now() + 60_000,
+          reason: "429",
+        },
+      ],
+    },
+    env,
+  )
+  const calls = []
+  const core = {
+    route: (input) => {
+      calls.push(structuredClone(input))
+      return decisionResponse({
+        providerID: "deepseek",
+        id: "deepseek-v4-pro",
+        chosen: "deepseek/deepseek-v4-pro",
+      })
+    },
+  }
+  const { router } = harness({ env, core })
+  await router.prompt({ sessionID: "ses_1", prompt: { text: "continue the refactor", files: [] } })
+  expect(calls[0].pool.map((model) => model.modelID)).toEqual(["deepseek-v4-pro"])
 })
 
 test("detects a user model override and forces the pin", async () => {

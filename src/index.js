@@ -43,6 +43,8 @@ export default {
     await register("prompt", (event) => router.prompt(event))
     await register("context", (event) => router.context(event))
     await register("compaction", (event) => router.compaction(event))
+    await register("retry", (event) => router.retry(event))
+    await register("experimental.model.resolve", (event) => router.resolveModel(event))
     try {
       disposers.push(await ctx.tool.hook("execute.after", (event) => router.toolAfter(event)))
     } catch (cause) {
