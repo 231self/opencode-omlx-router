@@ -47,6 +47,22 @@ const [wantsJson, withoutJson] = hasFlag(withoutHost, "--json")
 const [assumeYes, withoutYes] = hasFlag(withoutJson, "--yes")
 const [command = "status", ...rest] = withoutYes
 
+/** Usage lines for commands that take optional parameters. */
+const COMMAND_USAGE = {
+  config: "opencode-model-router config [get <key>|set <key> <value>|path]",
+  history: "opencode-model-router history [n]",
+  timing: "opencode-model-router timing [n]",
+  quality: "opencode-model-router quality [status|refresh]",
+  pricing: "opencode-model-router pricing [refresh|provider/model]",
+  pins: "opencode-model-router pins [clear]",
+  judge: "opencode-model-router judge [pull|status|cancel|probe]",
+}
+
+/** An unrecognised parameter: say what was wrong, then what is allowed. */
+function usageError(name, detail) {
+  return new Error(`${detail}\nusage: ${COMMAND_USAGE[name]}`)
+}
+
 function usage() {
   console.log(`opencode-model-router ${VERSION}
 
@@ -125,10 +141,13 @@ function configCommand() {
     console.log(`config ${configPath()}`)
     return
   }
-  throw new Error(`unknown config action: ${action}`)
+  throw usageError("config", `unknown config action: ${action}`)
 }
 
 function historyCommand() {
+  if (rest[0] !== undefined && !Number.isFinite(Number(rest[0]))) {
+    throw usageError("history", `"${rest[0]}" is not a number`)
+  }
   const limit = Number(rest[0] ?? 20)
   const decisions = readDecisions(host, Number.isFinite(limit) ? limit : 20)
   if (wantsJson) {
@@ -157,6 +176,9 @@ function modelRefLabel(reference) {
 }
 
 function pinsCommand() {
+  if (rest[0] && rest[0] !== "clear") {
+    throw usageError("pins", `unknown parameter "${rest[0]}"`)
+  }
   const pins = listPins(host)
   if (rest[0] === "clear") {
     if (pins.length === 0) {
@@ -195,6 +217,9 @@ function pinsCommand() {
 }
 
 function timingCommand() {
+  if (rest[0] !== undefined && !Number.isFinite(Number(rest[0]))) {
+    throw usageError("timing", `"${rest[0]}" is not a number`)
+  }
   const limit = Number(rest[0] ?? 20)
   const turns = readTurns(host, Number.isFinite(limit) ? limit : 20)
   const summary = summariseTurns(turns, Number.isFinite(limit) ? limit : 20)
@@ -260,6 +285,9 @@ function taskLine(task) {
 
 async function judgeCommand() {
   const action = rest[0] ?? "status"
+  if (!["pull", "status", "cancel", "probe"].includes(action)) {
+    throw usageError("judge", `unknown parameter "${action}"`)
+  }
   const { config } = readConfig({ write: true })
   const provision = new Provisioner({ config })
 
@@ -429,6 +457,9 @@ function priceLine(tiers) {
 async function pricingCommand() {
   const action = rest[0] ?? "status"
   const { config } = readConfig({ write: false })
+  if (action !== "status" && action !== "refresh" && !action.includes("/")) {
+    throw usageError("pricing", `unknown parameter "${action}"`)
+  }
   if (action === "refresh") {
     try {
       const cache = await refreshPricing({ config })
@@ -469,6 +500,9 @@ async function pricingCommand() {
 async function qualityCommand() {
   const action = rest[0] ?? "status"
   const { config } = readConfig({ write: false })
+  if (action !== "status" && action !== "refresh") {
+    throw usageError("quality", `unknown parameter "${action}"`)
+  }
   if (action === "refresh") {
     try {
       const cache = await refreshQuality({ config })

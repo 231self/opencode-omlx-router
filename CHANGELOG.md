@@ -27,6 +27,11 @@
 ### Changed
 
 - The auth/billing/quota cooldown is 5 minutes instead of 30.
+- Commands with optional parameters print a `usage:` line naming them, and an
+  unknown parameter is rejected with the allowed values instead of being
+  ignored (`/router pricing resfresh` no longer silently lists prices).
+  `/router subagents` now requires `on` or `off` rather than enabling routing
+  when called bare. The CLI behaves the same way.
 
 ## 0.2.1 — 2026-11-17
 

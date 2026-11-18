@@ -555,6 +555,10 @@ command and a palette entry **"oMLX Router: settings"**:
 | `/router subagents on\|off` | Toggle child-session routing in config |
 | `/router pricing [refresh]` | Per-pool-model token prices with their source; `refresh` refetches the public tables |
 
+Every command that takes optional parameters carries a `usage:` line with those
+parameters, shown with its default output and on an unknown parameter, so a typo
+reports the allowed values instead of being silently ignored.
+
 The TUI part reads and writes the same config file and state files as the
 adapter, so changes take effect on the next turn via the adapter's mtime check.
 It lists models through its own location data and calls oMLX with `fetch`; it

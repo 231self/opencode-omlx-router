@@ -782,6 +782,9 @@ the CLI for headless `opencode run`/`serve`, OpenCode Desktop, and Kilo.
 | `/router judge` | Probe the judge: model, latency, sample verdict |
 | `/router subagents on\|off` | Toggle subagent routing |
 
+Commands that take optional parameters print a `usage:` line naming them, and
+an unknown parameter is rejected with the allowed values rather than ignored.
+
 Menu items have descriptions and are navigable with the arrow keys, Enter, and
 Esc. A palette entry, **"OpenCode Router: settings"**, opens the same menu without
 typing a command. When routing changes the model, the plugin refreshes the

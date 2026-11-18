@@ -62,3 +62,26 @@ test("pricing reports an empty cache and looks models up", () => {
   expect(unknown.code).toBe(1)
   expect(unknown.stdout).toContain("unknown (no pricing data)")
 })
+
+test("unknown parameters print usage instead of being ignored", () => {
+  const pricing = run("pricing", "resfresh")
+  expect(pricing.code).toBe(1)
+  expect(pricing.stderr).toContain('unknown parameter "resfresh"')
+  expect(pricing.stderr).toContain("usage: opencode-model-router pricing [refresh|provider/model]")
+
+  const pins = run("pins", "wipe")
+  expect(pins.code).toBe(1)
+  expect(pins.stderr).toContain("usage: opencode-model-router pins [clear]")
+
+  const quality = run("quality", "rebuild")
+  expect(quality.code).toBe(1)
+  expect(quality.stderr).toContain("usage: opencode-model-router quality [status|refresh]")
+
+  const history = run("history", "many")
+  expect(history.code).toBe(1)
+  expect(history.stderr).toContain("usage: opencode-model-router history [n]")
+
+  const judge = run("judge", "fetch")
+  expect(judge.code).toBe(1)
+  expect(judge.stderr).toContain("usage: opencode-model-router judge [pull|status|cancel|probe]")
+})

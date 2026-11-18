@@ -516,3 +516,52 @@ test("/router pin-mode saves the selected cache strategy", async () => {
   await command().run("pin-mode")
   expect(readConfig({ write: false }).config.pin.mode).toBe("switch")
 })
+
+test("commands with optional parameters show their usage", async () => {
+  environment()
+  const { context, messages, command } = fakeContext()
+  tui.setup(context)
+
+  await command().run("pricing")
+  expect(messages.at(-1).message).toContain("usage: /router pricing [refresh]")
+
+  await command().run("pins")
+  expect(messages.at(-1).message).toContain("usage: /router pins [clear]")
+
+  await command().run("quality")
+  expect(messages.at(-1).message).toContain("usage: /router quality [refresh]")
+})
+
+test("an unknown parameter prints the allowed values instead of being ignored", async () => {
+  environment()
+  const { context, messages, command } = fakeContext()
+  tui.setup(context)
+
+  await command().run("pricing resfresh")
+  expect(messages.at(-1).message).toContain('"resfresh" is not a parameter')
+  expect(messages.at(-1).message).toContain("usage: /router pricing [refresh]")
+
+  await command().run("pins wipe")
+  expect(messages.at(-1).message).toContain("usage: /router pins [clear]")
+
+  await command().run("policy cheapest")
+  expect(messages.at(-1).message).toContain('"cheapest" is not a policy')
+  expect(messages.at(-1).message).toContain("usage: /router policy [cost|quality|latency|custom]")
+
+  await command().run("history many")
+  expect(messages.at(-1).message).toContain("usage: /router history [n]")
+
+  await command().run("subagents maybe")
+  expect(messages.at(-1).message).toContain("usage: /router subagents on|off")
+  expect(readConfig({ write: false }).config.subagents.enabled).toBe(true)
+})
+
+test("subagents still toggles with an explicit value", async () => {
+  environment()
+  const { context, command } = fakeContext()
+  tui.setup(context)
+  await command().run("subagents off")
+  expect(readConfig({ write: false }).config.subagents.enabled).toBe(false)
+  await command().run("subagents on")
+  expect(readConfig({ write: false }).config.subagents.enabled).toBe(true)
+})

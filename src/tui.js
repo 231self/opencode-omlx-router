@@ -34,6 +34,33 @@ import { ABI_VERSION, VERSION } from "./version.js"
 
 const HOST = "opencode"
 
+/** Usage lines for commands that take optional parameters. */
+const USAGE = {
+  policy: "/router policy [cost|quality|latency|custom]",
+  "pin-mode": "/router pin-mode [cache|balanced|switch]",
+  pricing: "/router pricing [refresh]",
+  pins: "/router pins [clear]",
+  quality: "/router quality [refresh]",
+  history: "/router history [n]",
+  timing: "/router timing [n]",
+  judge: "/router judge [pull|status|cancel|probe]",
+  subagents: "/router subagents on|off",
+}
+
+function usageLine(name) {
+  return USAGE[name] ?? `/router ${name}`
+}
+
+/** Default output followed by the optional parameters. */
+function withUsage(text, name) {
+  return `${text}\n\nusage: ${usageLine(name)}`
+}
+
+/** An unrecognised parameter: say what was wrong, then what is allowed. */
+async function showUsage(context, name, detail) {
+  await show(context, detail ? `${detail}\n\nusage: ${usageLine(name)}` : `usage: ${usageLine(name)}`)
+}
+
 function currentSession(context) {
   try {
     const route = context.ui?.router?.current?.()
@@ -613,7 +640,7 @@ async function runCommand(context, input) {
       }
       if (rest[0]) {
         if (!["cost", "quality", "latency"].includes(rest[0])) {
-          await show(context, "policy must be cost, quality, latency, or custom")
+          await showUsage(context, "policy", `"${rest[0]}" is not a policy`)
           return
         }
         saveConfig({ ...config, policy: rest[0] })
@@ -650,7 +677,7 @@ async function runCommand(context, input) {
       const modes = ["cache", "balanced", "switch"]
       if (rest[0]) {
         if (!modes.includes(rest[0])) {
-          await show(context, "pin mode must be cache, balanced, or switch")
+          await showUsage(context, "pin-mode", `"${rest[0]}" is not a pin mode`)
           return
         }
         saveConfig({ ...config, pin: { ...config.pin, mode: rest[0] } })
@@ -690,7 +717,11 @@ async function runCommand(context, input) {
       return
     }
     case "pricing": {
-      if (rest[0] === "refresh") {
+      if (rest[0]) {
+        if (rest[0] !== "refresh") {
+          await showUsage(context, "pricing", `"${rest[0]}" is not a parameter`)
+          return
+        }
         try {
           const cache = await refreshPricing({ config })
           await show(context, `pricing refreshed · ${cache.count} models (${cache.source})`)
@@ -700,14 +731,18 @@ async function runCommand(context, input) {
         return
       }
       const { models, providers } = await poolCatalog(context)
-      await show(context, pricingLines(config, models, providers))
+      await show(context, withUsage(pricingLines(config, models, providers), "pricing"))
       return
     }
     case "pins": {
+      if (rest[0] && rest[0] !== "clear") {
+        await showUsage(context, "pins", `"${rest[0]}" is not a parameter`)
+        return
+      }
       const pins = listPins(HOST)
       if (rest[0] === "clear") {
         if (pins.length === 0) {
-          await show(context, "no routing pins")
+          await show(context, withUsage("no routing pins", "pins"))
           return
         }
         const confirmed = await context.ui.dialog.confirm({
@@ -725,17 +760,23 @@ async function runCommand(context, input) {
         return
       }
       if (pins.length === 0) {
-        await show(context, "no routing pins")
+        await show(context, withUsage("no routing pins", "pins"))
         return
       }
       const lines = pinLines(pins).slice(0, 20)
       if (pins.length > lines.length) lines.push(`… ${pins.length - lines.length} more`)
-      lines.push("", "clear all: /router pins clear")
-      await show(context, [`${pins.length} sessions with routing state`, "", ...lines].join("\n"))
+      await show(
+        context,
+        withUsage([`${pins.length} sessions with routing state`, "", ...lines].join("\n"), "pins"),
+      )
       return
     }
     case "quality": {
       const action = rest[0] ?? "status"
+      if (action !== "status" && action !== "refresh") {
+        await showUsage(context, "quality", `"${action}" is not a parameter`)
+        return
+      }
       if (action === "refresh") {
         try {
           const cache = await refreshQuality({ config })
@@ -749,7 +790,7 @@ async function runCommand(context, input) {
       const source = qualitySource(config)
       const cache = readQualityCache()
       if (!cache) {
-        await show(context, `source   ${source}\ncache    none\nrun /router quality refresh`)
+        await show(context, withUsage(`source   ${source}\ncache    none`, "quality"))
         return
       }
       const lines = [`source   ${cache.source}`]
@@ -758,10 +799,14 @@ async function runCommand(context, input) {
       }
       lines.push(`models   ${cache.count}`)
       lines.push(`cache    ${qualityCachePath()}`)
-      await show(context, lines.join("\n"))
+      await show(context, withUsage(lines.join("\n"), "quality"))
       return
     }
     case "history": {
+      if (rest[0] !== undefined && !Number.isFinite(Number(rest[0]))) {
+        await showUsage(context, "history", `"${rest[0]}" is not a number`)
+        return
+      }
       const limit = Number(rest[0]) || 10
       const decisions = readDecisions(HOST, limit)
       if (decisions.length === 0) {
@@ -778,6 +823,10 @@ async function runCommand(context, input) {
       return
     }
     case "timing": {
+      if (rest[0] !== undefined && !Number.isFinite(Number(rest[0]))) {
+        await showUsage(context, "timing", `"${rest[0]}" is not a number`)
+        return
+      }
       const limit = Number(rest[0]) || 20
       const turns = readTurns(HOST, limit)
       if (turns.length === 0) {
@@ -835,6 +884,10 @@ async function runCommand(context, input) {
     }
     case "judge": {
       const action = rest[0]
+      if (action && !["pull", "status", "cancel", "probe"].includes(action)) {
+        await showUsage(context, "judge", `"${action}" is not a parameter`)
+        return
+      }
       if (action === "pull") {
         if (config.judge.provision?.enabled === false) {
           await show(context, "judge provisioning is disabled in config (judge.provision.enabled)")
@@ -891,7 +944,15 @@ async function runCommand(context, input) {
       return
     }
     case "subagents": {
-      const enabled = rest[0] !== "off"
+      if (rest[0] !== "on" && rest[0] !== "off") {
+        await showUsage(
+          context,
+          "subagents",
+          rest[0] ? `"${rest[0]}" is not a parameter` : "on or off is required",
+        )
+        return
+      }
+      const enabled = rest[0] === "on"
       saveConfig({ ...config, subagents: { ...config.subagents, enabled } })
       await context.ui.toast.show({
         title: "OpenCode Router",
@@ -907,8 +968,7 @@ async function runCommand(context, input) {
           "/router — action menu",
           "/router status",
           "/router on | off",
-          "/router policy [cost|quality|latency]",
-          "/router policy custom",
+          "/router policy [cost|quality|latency|custom]",
           "/router pricing [refresh]",
           "/router pin-mode [cache|balanced|switch]",
           "/router pool",
@@ -919,7 +979,7 @@ async function runCommand(context, input) {
           "/router explain",
           "/router pin [provider/model]",
           "/router auto",
-          "/router judge [pull|status|cancel]",
+          "/router judge [pull|status|cancel|probe]",
           "/router subagents on|off",
           "/router version",
           "/router debug",
