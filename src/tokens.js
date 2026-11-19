@@ -39,3 +39,40 @@ export function countContextTokens({ system, messages } = {}) {
   }
   return total
 }
+
+/** Measure a V2 active-context response without counting message metadata. */
+export function measureSessionContext(response) {
+  const messages = Array.isArray(response) ? response : response?.data
+  if (!Array.isArray(messages)) return null
+  let tokens = 0
+  let checkpoint = null
+  for (const message of messages) {
+    const { type, text, content, files, skills, command, output } = message ?? {}
+    switch (type) {
+      case "compaction":
+        checkpoint = message
+        if (message.status !== "completed" || typeof message.summary !== "string" ||
+            !message.summary.trim() || message.native != null) return null
+        tokens += estimateTokens(message.summary) + 16
+        break
+      case "user":
+      case "synthetic":
+      case "system":
+      case "skill":
+      case "assistant":
+      case "shell":
+        // Unresolved attachments can expand to an unknown size.
+        if (files?.length || skills?.length) return null
+        tokens += estimateTokens(JSON.stringify({ text, content, command, output, native: message.native })) + 16
+        break
+      case "model-switched":
+      case "agent-switched":
+      case "location-switched":
+      case "idle":
+        break
+      default:
+        return null
+    }
+  }
+  return { tokens, checkpoint }
+}

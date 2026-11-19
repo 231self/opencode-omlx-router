@@ -47,6 +47,45 @@ const USAGE = {
   subagents: "/router subagents on|off",
 }
 
+/**
+ * Command reference. One row per command: the menu, `/router help`, and
+ * `/router help <command>` all read it, so nothing drifts out of the menu.
+ */
+const HELP = [
+  { command: "menu", line: "/router", detail: "Action menu with every command below" },
+  { command: "status", line: "/router status", detail: "State, judge, pool, pins, and the last decision" },
+  { command: "on", line: "/router on | off", detail: "Enable or disable routing; on by default" },
+  { command: "policy", detail: "Cost / quality / latency or custom weights; clears pins when changed" },
+  { command: "pin-mode", detail: "Cache, balanced, or switch every turn; clears pins when changed" },
+  { command: "pool", line: "/router pool", detail: "Models available to the router and how to edit them" },
+  { command: "pricing", detail: "Input/output/cache prices for the pool, and the price source" },
+  { command: "pins", detail: "Sessions with automatic routing state; list or clear" },
+  { command: "quality", detail: "Score source, cache age, and refresh" },
+  { command: "timing", detail: "Local judge vs remote model vs tool time" },
+  { command: "history", detail: "Recent per-turn decisions, including subagents" },
+  { command: "explain", line: "/router explain", detail: "Why this session chose or kept its model" },
+  { command: "pin", line: "/router pin [provider/model]", detail: "Force this session onto a model" },
+  { command: "auto", line: "/router auto", detail: "Resume automatic routing for this session" },
+  { command: "judge", detail: "Probe the local judge or pull the recommended model" },
+  { command: "subagents", detail: "Route child sessions with their agent policy" },
+  { command: "version", line: "/router version", detail: "Router version, host, and core ABI" },
+  { command: "debug", line: "/router debug", detail: "Paths, judge, pool, last decision, and timing" },
+  {
+    command: "help",
+    line: "/router help [command]",
+    detail: "Command reference; name one command to see its options",
+  },
+]
+
+function helpLine(entry) {
+  return USAGE[entry.command] ?? entry.line ?? `/router ${entry.command}`
+}
+
+function helpEntry(name) {
+  const key = String(name ?? "").trim()
+  return HELP.find((entry) => entry.command === key) ?? null
+}
+
 function usageLine(name) {
   return USAGE[name] ?? `/router ${name}`
 }
@@ -58,7 +97,12 @@ function withUsage(text, name) {
 
 /** An unrecognised parameter: say what was wrong, then what is allowed. */
 async function showUsage(context, name, detail) {
-  await show(context, detail ? `${detail}\n\nusage: ${usageLine(name)}` : `usage: ${usageLine(name)}`)
+  const entry = helpEntry(name)
+  const lines = []
+  if (detail) lines.push(detail, "")
+  if (entry) lines.push(entry.detail)
+  lines.push(`usage: ${usageLine(name)}`)
+  await show(context, lines.join("\n"))
 }
 
 function currentSession(context) {
@@ -567,8 +611,11 @@ async function openMenu(context) {
         { title: "Pin mode", value: "pin-mode", description: "Cache, balanced, or switch every turn" },
         { title: "Pool", value: "pool", description: "Models available to the router and how to edit them" },
         { title: "Pricing", value: "pricing", description: "Input/output/cache prices for the pool" },
+        { title: "Refresh prices", value: "pricing refresh", description: "Fetch the public price tables now" },
         { title: "Pins", value: "pins", description: "Sessions with automatic routing state; list or clear" },
+        { title: "Clear all pins", value: "pins clear", description: "Release routing state for every session" },
         { title: "Quality scores", value: "quality", description: "LMArena score source, cache age, and refresh" },
+        { title: "Refresh scores", value: "quality refresh", description: "Fetch Epoch and LMArena scores now" },
         { title: "Timing", value: "timing", description: "Local judge vs remote model vs tool time" },
         { title: "History", value: "history", description: "Recent per-turn decisions, including subagents" },
         { title: "Explain last decision", value: "explain", description: "Why this session chose or kept its model" },
@@ -585,7 +632,7 @@ async function openMenu(context) {
           value: "toggle-subagents",
           description: "Route child sessions with their agent policy",
         },
-        { title: "Help", value: "help", description: "Command reference" },
+        { title: "Help", value: "help", description: "Command reference; pick a command for its options" },
         { title: "Diagnostics", value: "debug", description: "Version, paths, judge, pool, and the last decision" },
         { title: "Close", value: "close", description: "Close the router menu" },
       ],
@@ -595,6 +642,17 @@ async function openMenu(context) {
       await runCommand(context, config.enabled ? "off" : "on")
     } else if (choice === "toggle-subagents") {
       await runCommand(context, `subagents ${config.subagents.enabled ? "off" : "on"}`)
+    } else if (choice === "help") {
+      const picked = await context.ui.dialog.select({
+        title: "OpenCode Router help",
+        options: HELP.map((entry) => ({
+          title: helpLine(entry),
+          value: entry.command,
+          description: entry.detail,
+        })),
+      })
+      if (!picked) return
+      await runCommand(context, `help ${picked}`)
     } else {
       await runCommand(context, choice)
     }
@@ -962,29 +1020,20 @@ async function runCommand(context, input) {
       return
     }
     case "help": {
-      await show(
-        context,
-        [
-          "/router — action menu",
-          "/router status",
-          "/router on | off",
-          "/router policy [cost|quality|latency|custom]",
-          "/router pricing [refresh]",
-          "/router pin-mode [cache|balanced|switch]",
-          "/router pool",
-          "/router quality [refresh]",
-          "/router pins [clear]",
-          "/router history [n]",
-          "/router timing [n]",
-          "/router explain",
-          "/router pin [provider/model]",
-          "/router auto",
-          "/router judge [pull|status|cancel|probe]",
-          "/router subagents on|off",
-          "/router version",
-          "/router debug",
-        ].join("\n"),
-      )
+      const wanted = rest[0]
+      if (wanted) {
+        const entry = helpEntry(wanted)
+        if (!entry) {
+          await show(
+            context,
+            [`unknown command: ${wanted}`, "", ...HELP.map(helpLine)].join("\n"),
+          )
+          return
+        }
+        await show(context, [helpLine(entry), "", entry.detail].join("\n"))
+        return
+      }
+      await show(context, HELP.map(helpLine).join("\n"))
       return
     }
     default:

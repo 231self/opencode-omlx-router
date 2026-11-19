@@ -134,6 +134,97 @@ function harness({ sessionModel, env, core } = {}) {
   }
 }
 
+function downgradeHarness({ compact } = {}) {
+  const env = tempEnv()
+  const models = MODELS.map((model, index) => index === 0
+    ? { ...model, limit: { context: 32_000, output: 8_192 } }
+    : model)
+  const large = { providerID: "deepseek", id: "deepseek-v4-pro", variant: "default" }
+  const calls = []
+  const { router, switches } = harness({
+    env,
+    sessionModel: large,
+    core: {
+      route(request) {
+        calls.push(request.pool.map((model) => model.modelID))
+        return request.pool.some((model) => model.modelID === "deepseek-flash")
+          ? decisionResponse()
+          : decisionResponse(large)
+      },
+    },
+  })
+  let messages = [{ type: "user", text: "x".repeat(120_000) }]
+  let attempts = 0
+  router.ctx.model.list = async () => models
+  router.ctx.session.context = async () => {
+    if (messages instanceof Error) throw messages
+    return { data: messages }
+  }
+  router.ctx.session.compact = async () => {
+    attempts++
+    router.compaction({ sessionID: "ses_1" })
+    await compact?.()
+    return { id: "queued" }
+  }
+  return {
+    router, switches, calls, env,
+    prompt: (text = "continue") => router.prompt({ sessionID: "ses_1", prompt: { text } }),
+    setMessages: (value) => { messages = value },
+    attempts: () => attempts,
+    checkpoint: (overrides = {}) => ({
+      type: "compaction", status: "completed", id: "applied", summary: "Short summary",
+      time: { created: readPin("opencode", "ses_1", env).downgradeCompaction.at + 1 },
+      ...overrides,
+    }),
+  }
+}
+
+test("a queued downgrade waits for a completed checkpoint and remeasures on the next prompt", async () => {
+  const fixture = downgradeHarness()
+  await fixture.prompt()
+  expect(fixture.calls.slice(0, 2)).toEqual([["deepseek-v4-pro"], ["deepseek-flash", "deepseek-v4-pro"]])
+  expect(fixture.attempts()).toBe(1)
+  expect(fixture.switches).toEqual([])
+
+  fixture.setMessages([fixture.checkpoint({ status: "running" })])
+  await fixture.prompt()
+  expect(fixture.switches).toEqual([])
+
+  fixture.setMessages([fixture.checkpoint({ time: { created: 1 } })])
+  await fixture.prompt()
+  expect(fixture.switches).toEqual([])
+
+  fixture.setMessages([fixture.checkpoint(), { type: "assistant", content: [{ type: "text", text: "Retained turn" }] }])
+  await fixture.prompt()
+  expect(fixture.switches.map((model) => model.id)).toEqual(["deepseek-flash"])
+  expect(fixture.attempts()).toBe(1)
+})
+
+test("a failed or insufficient compaction never permits a smaller window or loops", async () => {
+  const fixture = downgradeHarness({ compact: () => { throw new Error("refused") } })
+  await fixture.prompt()
+  fixture.setMessages(new Error("cannot read active context"))
+  await fixture.prompt()
+  fixture.setMessages([fixture.checkpoint({ status: "failed" })])
+  await fixture.prompt()
+  fixture.setMessages([fixture.checkpoint({ summary: "x".repeat(92_000) })])
+  await fixture.prompt()
+  fixture.setMessages([fixture.checkpoint(), { type: "assistant", content: [{ type: "text", text: "x".repeat(92_000) }] }])
+  await fixture.prompt()
+  fixture.setMessages([fixture.checkpoint()])
+  await fixture.prompt("x".repeat(92_000))
+  expect(fixture.switches).toEqual([])
+  expect(fixture.attempts()).toBe(1)
+})
+
+test("a smaller model is not selected when active context cannot be verified", async () => {
+  const fixture = downgradeHarness()
+  fixture.setMessages(new Error("context unavailable"))
+  await fixture.prompt()
+  expect(fixture.switches).toEqual([])
+  expect(fixture.attempts()).toBe(0)
+})
+
 test("routes a turn, switches model, and persists pin and decision", async () => {
   const env = tempEnv()
   const calls = []

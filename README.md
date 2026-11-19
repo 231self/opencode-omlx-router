@@ -15,7 +15,7 @@ a model that will fail it.
 
 </div>
 
-> **Status: v0.2.3.** Routing, the context optimiser, subagent policy, the TUI
+> **Status: v0.2.4.** Routing, the context optimiser, subagent policy, the TUI
 > `/router` surface, per-turn timing, the CLI, and the Kilo shim are implemented
 > and tested. Design of record:
 > [`docs/specs/2026-11-15-opencode-omlx-router-design.md`](docs/specs/2026-11-15-opencode-omlx-router-design.md).
@@ -286,6 +286,17 @@ Even in `cache` or `balanced`, a pin is released by:
 
 Picking a model yourself (`/model`) becomes a forced pin until you run
 `/router auto`, the session compacts, or the model disappears.
+
+### Smaller context windows
+
+On OpenCode V2, before automatically switching to a model with less room, the
+router reads the active conversation and budgets for the new prompt, instructions,
+and output. If the preferred model would be too small, the router can queue one
+compaction while keeping the current model. A later user prompt must see a new,
+completed checkpoint and confirm the resulting context fits before switching.
+If the check fails or the summary is still too large, the router does not
+downgrade or keep re-requesting compaction. `limits.compactOnDowngrade: false`
+disables automatic compaction without disabling the fit check.
 
 ### Provider failover
 
@@ -781,9 +792,26 @@ the CLI for headless `opencode run`/`serve`, OpenCode Desktop, and Kilo.
 | `/router pin` / `/router auto` | Force or release a model pin for this session |
 | `/router judge` | Probe the judge: model, latency, sample verdict |
 | `/router subagents on\|off` | Toggle subagent routing |
+| `/router help [command]` | Command reference; name one command to see its options |
 
 Commands that take optional parameters print a `usage:` line naming them, and
 an unknown parameter is rejected with the allowed values rather than ignored.
+A command that needs a subcommand and is run bare shows that command's help
+rather than guessing.
+
+**Everything is reachable from `/router`.** The menu lists every command above,
+including the routing toggle, the `pricing refresh`, `quality refresh`, and
+`pins clear` subcommands, and Help — which opens a picker of commands and shows
+the options for the one you pick. `/router help <command>` does the same from
+the prompt.
+
+**Routing is on by default.** `/router status` shows `state enabled` or
+`state disabled`; `/router on` and `/router off` gate routing entirely. If
+status says `enabled` and the model still never changes, routing is working and
+keeping the incumbent — `/router explain` shows whether the last turn was
+`forced` (a manual model choice the router honors), `pin-kept` (the challenger
+was not better by enough), or `first-turn` (the pin expired and the same model
+won again).
 
 Menu items have descriptions and are navigable with the arrow keys, Enter, and
 Esc. A palette entry, **"OpenCode Router: settings"**, opens the same menu without
@@ -842,13 +870,15 @@ use the `opencode-model-router` CLI and `config.json`.
 
 | Symptom | Check |
 |---|---|
-| Routing does nothing | `/router status`: enabled? pool empty? judge errors? |
+| Routing does nothing | `/router status`: `state enabled`? empty pool? judge errors? |
+| Model never changes | `/router status` says `enabled`, so routing is keeping the incumbent: `/router explain` reads `forced`, `pin-kept`, or `first-turn`; `/router policy quality` stops cost-first favouring a free model |
+| Forgot a subcommand | `/router help <command>`, or `/router` → Help → pick the command |
 | Judge timeouts | `/router judge`; raise `judge.timeoutMs`, use a smaller judge model |
 | Wrong model chosen | `/router explain`; adjust `quality.overrides`, policy, or pool |
 | Model switching visibly lags | Kilo boundary behaviour, or a host that rejects the switch; check the decision log |
 | Context overflow | The optimiser reports `overflow`; raise the pool's context floor or reduce `reserveOutputTokens` |
 | Config ignored | The file wins after first run; check `~/.config/omlx-router/config.json` and the drift warning in status |
-| Prices look stale | The host refreshes models.dev on its own schedule; `/router pool` reads the live catalog |
+| Prices look stale | `/router pricing refresh` (or menu → Refresh prices) refetches the public tables |
 
 When in doubt, run `/router debug` (TUI) or `opencode-model-router debug` (CLI) and include
 its output in a bug report. It contains no prompt text and no credentials.

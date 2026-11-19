@@ -174,6 +174,7 @@ export function resolvePool({
       costSource: costSource(catalogCost, externalCost),
       limit: {
         context: Number(model.limit?.context) || 0,
+        ...(Number(model.limit?.input) > 0 ? { input: Number(model.limit.input) } : {}),
         output: Number(model.limit?.output) || 0,
       },
       capabilities: {

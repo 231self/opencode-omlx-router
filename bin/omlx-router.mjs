@@ -121,7 +121,7 @@ function configCommand() {
   }
   if (action === "get") {
     const key = rest[1]
-    if (!key) throw new Error("config get needs a key, e.g. policy or judge.model")
+    if (!key) throw usageError("config", "config get needs a key, e.g. policy or judge.model")
     const value = getConfigValue(config, key)
     console.log(wantsJson ? JSON.stringify(value, null, 2) : typeof value === "object" ? JSON.stringify(value, null, 2) : String(value))
     return
@@ -129,7 +129,7 @@ function configCommand() {
   if (action === "set") {
     const key = rest[1]
     const raw = rest.slice(2).join(" ")
-    if (!key || raw === "") throw new Error("config set needs <key> <value>")
+    if (!key || raw === "") throw usageError("config", "config set needs <key> <value>")
     let value
     try {
       value = JSON.parse(raw)

@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.2.4 — 2026-11-18
+
+### Added
+
+- `/router help [command]` prints the options for a single command, and the
+  menu's Help item opens a picker over the same reference. The menu now also
+  exposes `pricing refresh`, `quality refresh`, and `pins clear`, so every
+  command and subcommand is reachable without typing.
+- README documents routing on/off, and what `forced`, `pin-kept`, and
+  `first-turn` mean when the model never changes.
+
+### Fixed
+
+- OpenCode V2 no longer downgrades to a smaller context window on the strength
+  of a queued compaction. A later prompt verifies a completed checkpoint and
+  checks that the active conversation fits before switching.
+- A command that requires a subcommand and is run bare shows that command's
+  help and its available subcommands instead of guessing or silently ignoring
+  the input.
+
 ## 0.2.3 — 2026-11-18
 
 ### Added

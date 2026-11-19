@@ -427,6 +427,17 @@ Pin state per session:
   until three successful turns, then resumes policy routing.
 - Forced pins ignore idle TTL and thresholds.
 
+### Context-safe downgrades
+
+The OpenCode V2 prompt hook reads the active context for decisions involving
+smaller input budgets. It checks the new prompt and reserves space for output
+and instruction overhead. A separate scoring pass can identify a preferred
+smaller model that does not fit; this pass can only queue compaction, never
+apply a decision. The per-session guard survives pin release and compaction
+initiation. On a later prompt, a new completed checkpoint and a fresh fit check
+are required for a downgrade. Missing measurements and failed or insufficient
+compactions leave the downgrade deferred without an automatic retry loop.
+
 ## 10. Context optimiser
 
 - Budget `= limit.context − reserve`, `reserve = min(reserveOutputTokens, output
@@ -544,20 +555,34 @@ command and a palette entry **"oMLX Router: settings"**:
 
 | Input | Behaviour |
 |---|---|
-| `/router` | Status dialog: on/off, policy, pool source + size, pins (root and subagents), last decision, judge health |
-| `/router policy` | Interactive `ui.dialog.select` for `cost` / `quality` / `latency`; writes config, clears pins |
-| `/router on` / `/router off` | Toggle, persisted to config |
+| `/router` | Action menu: every command below, with descriptions, plus the routing and subagent toggles |
+| `/router status` | Compact status: state, judge, pins, timing, last decision |
+| `/router on` / `/router off` | Toggle, persisted to config; routing is on by default |
+| `/router policy [cost\|quality\|latency\|custom]` | Interactive picker or direct set; writes config, clears pins |
+| `/router pin-mode [cache\|balanced\|switch]` | Interactive picker or direct set; writes config, clears pins |
 | `/router pool` | List resolved models with inferred quality/cost/local flags and exclusion reasons |
-| `/router history [n]` | Recent decisions from `decisions.jsonl`, optionally filtered to the current session |
-| `/router explain` | Full trace of the current session's last decision |
-| `/router pin` / `/router auto` | Force or release a pin for the current session by writing the pin file |
-| `/router judge` | Calls oMLX directly: model, latency, sample verdict |
-| `/router subagents on\|off` | Toggle child-session routing in config |
 | `/router pricing [refresh]` | Per-pool-model token prices with their source; `refresh` refetches the public tables |
+| `/router pins [clear]` | Per-session routing state with active blocks; `clear` releases them all |
+| `/router quality [refresh]` | Score source, per-source counts, and cache age |
+| `/router history [n]` | Recent decisions from `decisions.jsonl`, optionally filtered to the current session |
+| `/router timing [n]` | Judge vs remote model vs tool time per turn |
+| `/router explain` | Full trace of the current session's last decision |
+| `/router pin [provider/model]` / `/router auto` | Force or release a pin for the current session by writing the pin file |
+| `/router judge [pull\|status\|cancel\|probe]` | Calls oMLX directly: model, latency, sample verdict |
+| `/router subagents on\|off` | Toggle child-session routing in config |
+| `/router version` / `/router debug` | Version, ABI, and config path; full diagnostics |
+| `/router help [command]` | Command reference; naming a command prints its options |
+
+One row per command in the `HELP` table drives the menu, `/router help`, and
+`/router help <command>`, so a command cannot disappear from the menu. The menu
+also exposes the subcommands — `pricing refresh`, `quality refresh`, and
+`pins clear` — and the routing toggle.
 
 Every command that takes optional parameters carries a `usage:` line with those
 parameters, shown with its default output and on an unknown parameter, so a typo
-reports the allowed values instead of being silently ignored.
+reports the allowed values instead of being silently ignored. A command that
+requires a subcommand and is run bare prints that command's help rather than
+guessing.
 
 The TUI part reads and writes the same config file and state files as the
 adapter, so changes take effect on the next turn via the adapter's mtime check.

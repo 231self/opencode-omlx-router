@@ -65,9 +65,34 @@ export function readPin(host, sessionID, env = process.env) {
   return readJson(pinFile(host, sessionID, env))
 }
 
+/**
+ * Routing state held per session. The measured context size is session
+ * knowledge rather than a pin, so releasing a pin keeps the measurement
+ * and any outstanding compaction guard.
+ */
+function preservedContext(pin) {
+  const keep = {}
+  if (!pin || typeof pin !== "object") return keep
+  if (Number(pin.lastContextTokens) > 0) keep.lastContextTokens = Number(pin.lastContextTokens)
+  if (pin.lastOptimiser) keep.lastOptimiser = pin.lastOptimiser
+  if (pin.downgradeCompaction) keep.downgradeCompaction = pin.downgradeCompaction
+  return keep
+}
+
 export function clearPin(host, sessionID, env = process.env) {
+  const file = pinFile(host, sessionID, env)
+  let keep = {}
   try {
-    fs.rmSync(pinFile(host, sessionID, env))
+    keep = preservedContext(readJson(file))
+  } catch {
+    // Remove unreadable routing state.
+  }
+  if (Object.keys(keep).length > 0) {
+    writeJsonAtomic(file, { session: sessionHash(sessionID), ...keep })
+    return
+  }
+  try {
+    fs.rmSync(file)
   } catch (error) {
     if (error.code !== "ENOENT") throw error
   }
@@ -85,8 +110,15 @@ export function clearPins(host, env = process.env) {
   let removed = 0
   for (const entry of entries) {
     if (!entry.endsWith(".json")) continue
+    const file = path.join(pinsDir(host, env), entry)
     try {
-      fs.rmSync(path.join(pinsDir(host, env), entry))
+      const pin = readJson(file)
+      const keep = preservedContext(pin)
+      if (Object.keys(keep).length > 0) {
+        writeJsonAtomic(file, { session: pin.session, ...keep })
+      } else {
+        fs.rmSync(file)
+      }
       removed += 1
     } catch {
       // best effort
@@ -112,7 +144,7 @@ export function listPins(host, env = process.env) {
       // A corrupt pin must never break routing or status.
     }
   }
-  return pins.filter(Boolean)
+  return pins.filter((pin) => pin?.model || pin?.blocked?.length || pin?.downgradeCompaction)
 }
 
 export function appendDecision(host, record, env = process.env) {

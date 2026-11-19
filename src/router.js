@@ -14,7 +14,7 @@ import {
   writePin,
   writeStats,
 } from "./state.js"
-import { countContextTokens, estimateTokens } from "./tokens.js"
+import { countContextTokens, estimateTokens, measureSessionContext } from "./tokens.js"
 
 export function refOf(model) {
   if (!model) return null
@@ -50,6 +50,14 @@ const FAILOVER_STATUS = new Set([401, 402, 403, 408, 429])
 const FAILOVER_TEXT =
   /rate.?limit|overload|timeout|quota|unavailable|capacity|credit|billing|balance|insufficient|usage.?limit|exhaust|no more tokens/i
 const PROVIDER_WIDE_TEXT = /credit|billing|balance|insufficient|quota|usage.?limit|exhaust|account|organization/i
+function inputBudget(model, config) {
+  const context = Number(model?.limit?.context) || 0
+  const output = Number(model?.limit?.output) || Infinity
+  const reserve = Math.min(output, Number(config.optimiser?.reserveOutputTokens) || 8192)
+  const safety = Number(config.optimiser?.safetyTokens) || 1024
+  const ratio = Number(config.limits?.contextFitRatio) || 0.9
+  return Math.max(0, Math.min(context * ratio, context - reserve - safety, model?.limit?.input || Infinity))
+}
 
 /** Provider failures worth routing around, not merely retrying. */
 export function isFailoverError(error) {
@@ -262,6 +270,14 @@ export class Router {
     return value
   }
 
+  async measureContext(sessionID) {
+    try {
+      return measureSessionContext(await this.ctx.session.context?.({ sessionID }))
+    } catch {
+      return null
+    }
+  }
+
   async prompt(event) {
     const promptStarted = Date.now()
     try {
@@ -310,8 +326,23 @@ export class Router {
           warnings: resolved.warnings,
         })
       }
-      const lastContextTokens = Number(pin?.lastContextTokens) || 0
       const promptText = String(event?.prompt?.text ?? "")
+      const promptTokens = estimateTokens(promptText)
+      const currentModel = models.find((model) => sameModel(refOf(model), current))
+      const currentBudget = inputBudget(currentModel, config)
+      const smaller = (model) => !sameModel(refOf(model), current) && inputBudget(model, config) < currentBudget
+      const pending = pin?.downgradeCompaction
+      const differentWindows = currentBudget > 0 && pool.some((model) => inputBudget(model, config) !== currentBudget)
+      const measured = pending || differentWindows ? await this.measureContext(sessionID) : null
+      const checkpoint = measured?.checkpoint
+      const completed = Boolean(pending && checkpoint?.id && checkpoint.id !== pending.checkpoint &&
+        Number(checkpoint.time?.created) >= pending.at)
+      const lastContextTokens = measured?.tokens ?? (Number(pin?.lastContextTokens) || 0)
+      const totalInput = lastContextTokens + promptTokens
+      const sizedPrompt = !event?.prompt?.files?.length && !event?.prompt?.skills?.length
+      const needsVerification = (model) => smaller(model) || (pending && !currentBudget)
+      const eligible = pool.filter((model) => !needsVerification(model) ||
+        (measured && sizedPrompt && (!pending || completed) && totalInput <= inputBudget(model, config)))
       const stats = readStats(this.host, this.env) ?? { decisions: 0, switches: 0 }
 
       const request = {
@@ -331,15 +362,15 @@ export class Router {
         },
         turn: {
           promptText,
-          promptTokens: estimateTokens(promptText),
+          promptTokens,
           images: countImages(event?.prompt?.files),
           lastContextTokens,
           toolFailures: this.failures.get(sessionID)?.count ?? 0,
           turnClassHint: null,
         },
-        pool: pool.length ? pool : resolved.pool,
+        pool: eligible,
         settings: config,
-        pin: pinForRequest(pin),
+        pin: completed && !pin?.forced ? null : pinForRequest(pin),
         judge: { verdict: null, cached: false, unavailable: false },
         stats,
       }
@@ -369,9 +400,64 @@ export class Router {
         coreMs += Date.now() - coreStarted
       }
 
+      // This counterfactual is only a reason to compact, never a routable decision.
+      if (measured && sizedPrompt && currentBudget >= totalInput &&
+          typeof this.ctx.session.compact === "function" && config.limits?.compactOnDowngrade !== false &&
+          !pending && !request.pin?.forced && !info?.parentID &&
+          pool.some((model) => smaller(model) && inputBudget(model, config) < totalInput)) {
+        const probe = this.core.route({
+          ...request,
+          pool,
+          turn: { ...request.turn, lastContextTokens: 0 },
+          judge: { ...request.judge, unavailable: true },
+        })
+        const wanted = probe.decision && pool.find((model) => sameModel(refOf(model), decisionRef(probe.decision)))
+        if (wanted && smaller(wanted) && totalInput > inputBudget(wanted, config) &&
+            promptTokens <= inputBudget(wanted, config)) {
+          const latest = readPin(this.host, sessionID, this.env) ?? {}
+          if (!latest.downgradeCompaction) {
+            writePin(this.host, sessionID, {
+              ...latest,
+              downgradeCompaction: { at: Date.now(), checkpoint: checkpoint?.id ?? null },
+            }, this.env)
+            try {
+              await this.ctx.session.compact({ sessionID })
+              this.record({ action: "skip", log: {
+                ...result.log,
+                ts: Date.now(), host: this.host, session: sessionHash(sessionID),
+                stage: "compact/deferred", reason: "context-too-large", chosen: label(current),
+              } }, config)
+              return
+            } catch {
+              // Retain the attempt marker: don't repeatedly queue a failed compaction.
+              this.record({ action: "skip", log: {
+                ...result.log,
+                ts: Date.now(), host: this.host, session: sessionHash(sessionID),
+                stage: "compact/failed", reason: "compaction-request-failed", chosen: label(current),
+              } }, config)
+            }
+          }
+          return
+        }
+      }
+
       if (result.action !== "decide" || !result.decision) {
         this.record(result, config)
         return
+      }
+
+      const target = decisionRef(result.decision)
+      const targetModel = models.find((model) => sameModel(refOf(model), target))
+      if (!sameModel(current, target) && targetModel && needsVerification(targetModel)) {
+        if (!eligible.some((model) => sameModel(refOf(model), target))) return
+        // The judge may have taken time. Check the active context and model again.
+        const latest = await this.session(sessionID)
+        const fresh = await this.measureContext(sessionID)
+        const latestPending = readPin(this.host, sessionID, this.env)?.downgradeCompaction
+        if (!fresh || !sameModelAndVariant(current, refOf(latest?.model)) ||
+            latestPending?.at !== pending?.at ||
+            fresh.checkpoint?.id !== checkpoint?.id ||
+            fresh.tokens + promptTokens > inputBudget(targetModel, config)) return
       }
 
       let switched = false
@@ -396,6 +482,7 @@ export class Router {
         ...(result.pin ?? {}),
         lastApplied: applied,
         lastContextTokens,
+        ...(switched && targetModel && needsVerification(targetModel) ? { downgradeCompaction: null } : {}),
       }
       if (nextPin.model) {
         // The context hook also writes this file. Merge with the latest pin so
@@ -648,7 +735,12 @@ export class Router {
       writePin(
         this.host,
         sessionID,
-        { ...(overflow ? {} : latest), lastContextTokens: tokens, lastOptimiser: optimiser },
+        {
+          ...latest,
+          ...(overflow ? { model: undefined, forced: false, redirect: null } : {}),
+          lastContextTokens: tokens,
+          lastOptimiser: optimiser,
+        },
         this.env,
       )
     } catch {
@@ -660,7 +752,9 @@ export class Router {
     const sessionID = event?.sessionID
     if (!sessionID) return
     try {
-      clearPin(this.host, sessionID, this.env)
+      // This hook runs before summarization, not after a checkpoint is applied.
+      const pin = readPin(this.host, sessionID, this.env)
+      if (!pin?.downgradeCompaction) clearPin(this.host, sessionID, this.env)
     } catch {
       // ignore
     }

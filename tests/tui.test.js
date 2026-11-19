@@ -565,3 +565,59 @@ test("subagents still toggles with an explicit value", async () => {
   await command().run("subagents on")
   expect(readConfig({ write: false }).config.subagents.enabled).toBe(true)
 })
+
+test("/router help lists every command and can show one", async () => {
+  environment()
+  const { context, messages, command } = fakeContext()
+  tui.setup(context)
+
+  await command().run("help")
+  const all = messages.at(-1).message
+  for (const line of [
+    "/router on | off",
+    "/router pricing [refresh]",
+    "/router pins [clear]",
+    "/router subagents on|off",
+    "/router help [command]",
+  ]) {
+    expect(all).toContain(line)
+  }
+
+  await command().run("help pricing")
+  const one = messages.at(-1).message
+  expect(one).toContain("/router pricing [refresh]")
+  expect(one).toContain("price source")
+
+  await command().run("help nope")
+  expect(messages.at(-1).message).toContain("unknown command: nope")
+})
+
+test("the main menu reaches every subcommand and the help picker", async () => {
+  environment()
+  const { context, messages, command, options, setSelect } = fakeContext()
+  tui.setup(context)
+
+  // openMenu loops until "close", so every select needs a terminating answer.
+  setSelect("status", "close")
+  await command().run("menu")
+  const values = options().map((entry) => entry.value)
+  for (const value of [
+    "toggle-routing",
+    "toggle-subagents",
+    "pricing refresh",
+    "quality refresh",
+    "pins clear",
+    "help",
+    "explain",
+    "auto",
+    "pin",
+    "debug",
+  ]) {
+    expect(values).toContain(value)
+  }
+
+  setSelect("help", "subagents", "close")
+  await command().run("menu")
+  expect(messages.at(-1).message).toContain("/router subagents on|off")
+  expect(messages.at(-1).message).toContain("child sessions")
+})

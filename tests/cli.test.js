@@ -84,4 +84,8 @@ test("unknown parameters print usage instead of being ignored", () => {
   const judge = run("judge", "fetch")
   expect(judge.code).toBe(1)
   expect(judge.stderr).toContain("usage: opencode-model-router judge [pull|status|cancel|probe]")
+
+  const config = run("config", "get")
+  expect(config.code).toBe(1)
+  expect(config.stderr).toContain("usage: opencode-model-router config")
 })
