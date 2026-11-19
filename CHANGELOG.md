@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.2.4 — 2026-11-18
+## 0.2.5 — 2026-11-19
 
 ### Added
 
@@ -8,21 +8,26 @@
   menu's Help item opens a picker over the same reference. The menu now also
   exposes `pricing refresh`, `quality refresh`, and `pins clear`, so every
   command and subcommand is reachable without typing.
-- README documents routing on/off, and what `forced`, `pin-kept`, and
-  `first-turn` mean when the model never changes.
 - `/router retention [cache|balanced|switch]` renames `pin-mode`, which was
   easy to confuse with `/router pins` (per-session state). The old name stays
   as an alias, the config key `pin.mode` is unchanged, and the menu now reads
   "Model retention" and "Session pins".
+- README documents routing on/off, and what `forced`, `pin-kept`, and
+  `first-turn` mean when the model never changes.
+
+### Fixed
+
+- A command that requires a subcommand and is run bare shows that command's
+  help and its available subcommands instead of guessing or silently ignoring
+  the input.
+
+## 0.2.4 — 2026-11-18
 
 ### Fixed
 
 - OpenCode V2 no longer downgrades to a smaller context window on the strength
   of a queued compaction. A later prompt verifies a completed checkpoint and
   checks that the active conversation fits before switching.
-- A command that requires a subcommand and is run bare shows that command's
-  help and its available subcommands instead of guessing or silently ignoring
-  the input.
 
 ## 0.2.3 — 2026-11-18
 
