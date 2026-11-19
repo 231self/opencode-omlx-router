@@ -10,6 +10,10 @@
   command and subcommand is reachable without typing.
 - README documents routing on/off, and what `forced`, `pin-kept`, and
   `first-turn` mean when the model never changes.
+- `/router retention [cache|balanced|switch]` renames `pin-mode`, which was
+  easy to confuse with `/router pins` (per-session state). The old name stays
+  as an alias, the config key `pin.mode` is unchanged, and the menu now reads
+  "Model retention" and "Session pins".
 
 ### Fixed
 

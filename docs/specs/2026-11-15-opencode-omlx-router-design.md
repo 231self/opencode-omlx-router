@@ -559,7 +559,7 @@ command and a palette entry **"oMLX Router: settings"**:
 | `/router status` | Compact status: state, judge, pins, timing, last decision |
 | `/router on` / `/router off` | Toggle, persisted to config; routing is on by default |
 | `/router policy [cost\|quality\|latency\|custom]` | Interactive picker or direct set; writes config, clears pins |
-| `/router pin-mode [cache\|balanced\|switch]` | Interactive picker or direct set; writes config, clears pins |
+| `/router retention [cache\|balanced\|switch]` | How long the router keeps a model; interactive picker or direct set, clears pins (`pin-mode` is an alias) |
 | `/router pool` | List resolved models with inferred quality/cost/local flags and exclusion reasons |
 | `/router pricing [refresh]` | Per-pool-model token prices with their source; `refresh` refetches the public tables |
 | `/router pins [clear]` | Per-session routing state with active blocks; `clear` releases them all |

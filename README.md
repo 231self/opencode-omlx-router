@@ -782,7 +782,7 @@ the CLI for headless `opencode run`/`serve`, OpenCode Desktop, and Kilo.
 | `/router debug` | Diagnostics: paths, config digest, judge, pool, last decision, timing |
 | `/router on` / `/router off` | Enable or disable routing |
 | `/router policy` | Interactive picker for `cost` / `quality` / `latency`, or custom weights; clears pins |
-| `/router pin-mode` | Interactive picker for `cache` / `balanced` / `switch` |
+| `/router retention [cache\|balanced\|switch]` | How long the router keeps a model: cache reuse, balanced, or switch every turn; `pin-mode` still works |
 | `/router pool` | Interactive pool setup: favorites, explicit list, or all available; shows context, cost, and quality per model |
 | `/router pricing [refresh]` | Input, output, and cache-read prices per pool model, with the price source |
 | `/router pins [clear]` | Sessions with automatic routing state; list or clear |
@@ -798,6 +798,10 @@ Commands that take optional parameters print a `usage:` line naming them, and
 an unknown parameter is rejected with the allowed values rather than ignored.
 A command that needs a subcommand and is run bare shows that command's help
 rather than guessing.
+
+`pin` (force one session) and `pins` (per-session state) are about a single
+session; `retention` is the strategy that decides how eagerly the router leaves
+a model. The old `pin-mode` name is an alias of `retention`.
 
 **Everything is reachable from `/router`.** The menu lists every command above,
 including the routing toggle, the `pricing refresh`, `quality refresh`, and

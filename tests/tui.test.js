@@ -508,13 +508,16 @@ test("/router explain shows the decision, scores, costs, and verdict", async () 
   expect(text).toContain("cost $0.008000")
 })
 
-test("/router pin-mode saves the selected cache strategy", async () => {
+test("/router retention saves the strategy and keeps the pin-mode alias", async () => {
   environment()
   const { context, command, setSelect } = fakeContext()
   tui.setup(context)
   setSelect("switch")
-  await command().run("pin-mode")
+  await command().run("retention")
   expect(readConfig({ write: false }).config.pin.mode).toBe("switch")
+  setSelect("cache")
+  await command().run("pin-mode")
+  expect(readConfig({ write: false }).config.pin.mode).toBe("cache")
 })
 
 test("commands with optional parameters show their usage", async () => {
@@ -554,6 +557,10 @@ test("an unknown parameter prints the allowed values instead of being ignored", 
   await command().run("subagents maybe")
   expect(messages.at(-1).message).toContain("usage: /router subagents on|off")
   expect(readConfig({ write: false }).config.subagents.enabled).toBe(true)
+
+  // The old pin-mode name still reports the new retention usage.
+  await command().run("pin-mode sometimes")
+  expect(messages.at(-1).message).toContain("usage: /router retention [cache|balanced|switch]")
 })
 
 test("subagents still toggles with an explicit value", async () => {
@@ -604,6 +611,8 @@ test("the main menu reaches every subcommand and the help picker", async () => {
   for (const value of [
     "toggle-routing",
     "toggle-subagents",
+    "retention",
+    "pins",
     "pricing refresh",
     "quality refresh",
     "pins clear",

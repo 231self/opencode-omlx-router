@@ -37,7 +37,7 @@ const HOST = "opencode"
 /** Usage lines for commands that take optional parameters. */
 const USAGE = {
   policy: "/router policy [cost|quality|latency|custom]",
-  "pin-mode": "/router pin-mode [cache|balanced|switch]",
+  retention: "/router retention [cache|balanced|switch]",
   pricing: "/router pricing [refresh]",
   pins: "/router pins [clear]",
   quality: "/router quality [refresh]",
@@ -56,10 +56,13 @@ const HELP = [
   { command: "status", line: "/router status", detail: "State, judge, pool, pins, and the last decision" },
   { command: "on", line: "/router on | off", detail: "Enable or disable routing; on by default" },
   { command: "policy", detail: "Cost / quality / latency or custom weights; clears pins when changed" },
-  { command: "pin-mode", detail: "Cache, balanced, or switch every turn; clears pins when changed" },
+  {
+    command: "retention",
+    detail: "How long the router keeps a model: cache reuse, balanced, or switch every turn; clears pins when changed",
+  },
   { command: "pool", line: "/router pool", detail: "Models available to the router and how to edit them" },
   { command: "pricing", detail: "Input/output/cache prices for the pool, and the price source" },
-  { command: "pins", detail: "Sessions with automatic routing state; list or clear" },
+  { command: "pins", detail: "Per-session model choice, active blocks, and age; list or clear" },
   { command: "quality", detail: "Score source, cache age, and refresh" },
   { command: "timing", detail: "Local judge vs remote model vs tool time" },
   { command: "history", detail: "Recent per-turn decisions, including subagents" },
@@ -81,13 +84,20 @@ function helpLine(entry) {
   return USAGE[entry.command] ?? entry.line ?? `/router ${entry.command}`
 }
 
-function helpEntry(name) {
+/** Older command names kept working. */
+const ALIASES = { "pin-mode": "retention", pinmode: "retention" }
+
+function canonical(name) {
   const key = String(name ?? "").trim()
-  return HELP.find((entry) => entry.command === key) ?? null
+  return ALIASES[key] ?? key
+}
+
+function helpEntry(name) {
+  return HELP.find((entry) => entry.command === canonical(name)) ?? null
 }
 
 function usageLine(name) {
-  return USAGE[name] ?? `/router ${name}`
+  return USAGE[canonical(name)] ?? `/router ${canonical(name)}`
 }
 
 /** Default output followed by the optional parameters. */
@@ -608,11 +618,19 @@ async function openMenu(context) {
           value: "policy",
           description: "Cost / quality / latency or custom weights; clears pins when changed",
         },
-        { title: "Pin mode", value: "pin-mode", description: "Cache, balanced, or switch every turn" },
+        {
+          title: "Model retention",
+          value: "retention",
+          description: "How long the router keeps a model: cache, balanced, or switch every turn",
+        },
         { title: "Pool", value: "pool", description: "Models available to the router and how to edit them" },
         { title: "Pricing", value: "pricing", description: "Input/output/cache prices for the pool" },
         { title: "Refresh prices", value: "pricing refresh", description: "Fetch the public price tables now" },
-        { title: "Pins", value: "pins", description: "Sessions with automatic routing state; list or clear" },
+        {
+          title: "Session pins",
+          value: "pins",
+          description: "Per-session model choice, active blocks, and age; list or clear",
+        },
         { title: "Clear all pins", value: "pins clear", description: "Release routing state for every session" },
         { title: "Quality scores", value: "quality", description: "LMArena score source, cache age, and refresh" },
         { title: "Refresh scores", value: "quality refresh", description: "Fetch Epoch and LMArena scores now" },
@@ -730,21 +748,22 @@ async function runCommand(context, input) {
       await context.ui.toast.show({ title: "OpenCode Router", message: `policy ${choice}`, variant: "success" })
       return
     }
+    case "retention":
     case "pin-mode":
     case "pinmode": {
       const modes = ["cache", "balanced", "switch"]
       if (rest[0]) {
         if (!modes.includes(rest[0])) {
-          await showUsage(context, "pin-mode", `"${rest[0]}" is not a pin mode`)
+          await showUsage(context, "retention", `"${rest[0]}" is not a retention mode`)
           return
         }
         saveConfig({ ...config, pin: { ...config.pin, mode: rest[0] } })
         clearPins(HOST)
-        await context.ui.toast.show({ title: "OpenCode Router", message: `pin mode ${rest[0]}`, variant: "success" })
+        await context.ui.toast.show({ title: "OpenCode Router", message: `retention ${rest[0]}`, variant: "success" })
         return
       }
       const choice = await context.ui.dialog.select({
-        title: "OpenCode Router pin mode",
+        title: "OpenCode Router model retention",
         current: config.pin.mode ?? "balanced",
         options: [
           {
@@ -767,7 +786,7 @@ async function runCommand(context, input) {
       if (!choice) return
       saveConfig({ ...config, pin: { ...config.pin, mode: choice } })
       clearPins(HOST)
-      await context.ui.toast.show({ title: "OpenCode Router", message: `pin mode ${choice}`, variant: "success" })
+      await context.ui.toast.show({ title: "OpenCode Router", message: `retention ${choice}`, variant: "success" })
       return
     }
     case "pool": {
