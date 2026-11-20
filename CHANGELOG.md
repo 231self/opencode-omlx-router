@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.2.6 — unreleased
+
+### Security
+
+- `bun run security` and a CI job fail the build on secret-shaped strings in
+  the tree or the published tarball, on credential-shaped files, and on any npm
+  dependency (there are none on purpose). gitleaks scans the full history and
+  `cargo audit` watches `core/Cargo.lock`; Dependabot tracks the GitHub actions
+  and Rust crates.
+- The wasm core's memory is capped at 16 MiB, `unsafe` is denied outside the
+  C ABI boundary, and oversized requests (over 1 MiB), pools (over 1024
+  models), and transcripts (over 5,000 messages) are refused. A core trap
+  degrades to `skip` instead of failing the turn.
+
 ## 0.2.5 — 2026-11-19
 
 ### Added

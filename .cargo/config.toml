@@ -1,0 +1,5 @@
+# The core runs inside a user's TUI: a runaway allocation must fail loudly
+# instead of growing toward wasm's 4 GiB default ceiling. 256 pages = 16 MiB,
+# far above the ~2 MiB the decision engine actually needs.
+[target.wasm32-unknown-unknown]
+rustflags = ["-C", "link-arg=--max-memory=16777216"]

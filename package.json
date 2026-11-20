@@ -48,6 +48,7 @@
     "test": "bun run build:wasm && bun test",
     "test:rust": "cargo test --manifest-path core/Cargo.toml",
     "check": "bash scripts/check.sh",
+    "security": "node scripts/security-check.mjs",
     "prepack": "bun run build:wasm",
     "test:e2e": "bun tests/e2e/run.mjs",
     "test:e2e:live": "bun tests/e2e/run.mjs --real-judge --only live-judge",

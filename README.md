@@ -887,6 +887,26 @@ use the `opencode-model-router` CLI and `config.json`.
 When in doubt, run `/router debug` (TUI) or `opencode-model-router debug` (CLI) and include
 its output in a bug report. It contains no prompt text and no credentials.
 
+## Security
+
+The plugin ships source and one wasm binary into a user's editor, so the
+boundaries are explicit and checked:
+
+- **The core cannot reach the host.** `dist/core.wasm` has zero imports — no
+  filesystem, network, or clock — and `unsafe` is denied everywhere except the
+  C ABI boundary in `core/src/lib.rs`.
+- **Resources are bounded.** Memory is capped at 16 MiB (a runaway allocation
+  traps instead of taking the host down), and requests over 1 MiB, pools over
+  1024 models, or transcripts over 5,000 messages are refused. A trap degrades
+  to `skip`, never a broken turn.
+- **Nothing is a secret.** `bun run security` fails the build on secret-shaped
+  strings anywhere in the tree or the published tarball, on credential-shaped
+  files, and on any npm dependency — there are none on purpose. The
+  `{env:NAME}` placeholders in `config.example.json` are the only credential
+  form the router understands.
+- **CI** runs gitleaks over the full history and `cargo audit` against
+  `core/Cargo.lock`; Dependabot watches the GitHub actions and the Rust crates.
+
 ## Development
 
 ```sh
@@ -894,7 +914,8 @@ bun install
 bun run build:wasm     # cargo build --target wasm32-unknown-unknown --release
 bun test               # adapter + WASM bridge tests
 bun run test:rust      # cargo test
-bun run check          # fmt, clippy, tests, size gate
+bun run check          # fmt, clippy, tests, size gate, security gate
+bun run security       # secret scan of the tree and the published tarball
 bun run test:e2e       # live prompt tests against OpenCode + Kilo (needs a local judge)
 bun run test:e2e:live  # one prompt through the real local judge
 bun run judge:calibrate # real judge verdicts + latency across six cases

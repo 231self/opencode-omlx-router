@@ -7,6 +7,7 @@ cargo clippy --manifest-path core/Cargo.toml --all-targets -- -D warnings
 cargo test --manifest-path core/Cargo.toml
 bun run build:wasm
 bun test
+node scripts/security-check.mjs
 
 size=$(wc -c < dist/core.wasm | tr -d ' ')
 limit=614400

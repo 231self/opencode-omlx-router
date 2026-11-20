@@ -10,6 +10,66 @@ export const DEFAULT_WASM_PATH = path.join(HERE, "..", "dist", "core.wasm")
 const encoder = new TextEncoder()
 const decoder = new TextDecoder()
 
+/** Mirrors the caps in `core/src/lib.rs`: same budget on both sides of the ABI. */
+export const MAX_REQUEST_BYTES = 1024 * 1024
+export const MAX_RESULT_BYTES = 1024 * 1024
+
+function trapResult(name, error) {
+  const reason = "core_trap"
+  const message = String(error?.message ?? error)
+  return name === "optimise"
+    ? {
+        abi: 0,
+        plan: [],
+        stats: { beforeTokens: 0, afterTokens: 0, partsPruned: 0, overflow: false },
+        reason,
+        error: message,
+      }
+    : { abi: 0, action: "skip", reason, error: message }
+}
+
+/**
+ * One call across the ABI. A trap, a null result, or an oversized request is
+ * reported as an error or a skip — never a broken turn.
+ */
+export function callApi(api, name, input) {
+  let json
+  try {
+    json = JSON.stringify(input)
+  } catch (error) {
+    throw new CoreError(`${name}: request is not serialisable: ${error.message}`)
+  }
+  const request = encoder.encode(json)
+  if (request.length > MAX_REQUEST_BYTES) {
+    throw new CoreError(`${name}: request of ${request.length} bytes exceeds ${MAX_REQUEST_BYTES}`)
+  }
+  const ptr = api.alloc(request.length)
+  if (!ptr) throw new CoreError(`${name}: core alloc failed`)
+
+  let outPtr
+  try {
+    new Uint8Array(api.memory.buffer, ptr, request.length).set(request)
+    outPtr = api[name](ptr, request.length)
+  } catch (error) {
+    if (error instanceof CoreError) throw error
+    return trapResult(name, error)
+  } finally {
+    api.dealloc(ptr, request.length)
+  }
+  if (!outPtr) throw new CoreError(`${name}: core returned a null result`)
+
+  const length = api.result_len()
+  if (length > MAX_RESULT_BYTES) {
+    throw new CoreError(`${name}: core returned ${length} bytes, over the ${MAX_RESULT_BYTES} limit`)
+  }
+  const text = decoder.decode(new Uint8Array(api.memory.buffer, outPtr, length))
+  try {
+    return JSON.parse(text)
+  } catch (error) {
+    throw new CoreError(`${name}: core returned invalid JSON: ${error.message}`)
+  }
+}
+
 export class CoreError extends Error {
   constructor(message) {
     super(message)
@@ -48,32 +108,7 @@ export async function loadCore({ wasmPath = DEFAULT_WASM_PATH } = {}) {
   if (abi !== ABI_VERSION) throw new CoreError(`core ABI ${abi} does not match adapter ABI ${ABI_VERSION}`)
 
   function call(name, input) {
-    let json
-    try {
-      json = JSON.stringify(input)
-    } catch (error) {
-      throw new CoreError(`${name}: request is not serialisable: ${error.message}`)
-    }
-    const request = encoder.encode(json)
-    const ptr = api.alloc(request.length)
-    if (!ptr) throw new CoreError(`${name}: core alloc failed`)
-
-    let outPtr
-    try {
-      new Uint8Array(api.memory.buffer, ptr, request.length).set(request)
-      outPtr = api[name](ptr, request.length)
-    } finally {
-      api.dealloc(ptr, request.length)
-    }
-    if (!outPtr) throw new CoreError(`${name}: core returned a null result`)
-
-    const length = api.result_len()
-    const text = decoder.decode(new Uint8Array(api.memory.buffer, outPtr, length))
-    try {
-      return JSON.parse(text)
-    } catch (error) {
-      throw new CoreError(`${name}: core returned invalid JSON: ${error.message}`)
-    }
+    return callApi(api, name, input)
   }
 
   return {

@@ -115,6 +115,14 @@ with `cargo test`, and keeps the WASM ABI free of wasm-bindgen glue.
 
 ### WASM ABI
 
+The module has no imports, so it cannot reach the host's filesystem, network,
+or clock. `unsafe` is denied outside the ABI boundary. Resource use is bounded
+on both sides of the ABI: memory is capped at 16 MiB at link time (allocation
+fails and traps instead of growing toward wasm's 4 GiB default), and the
+adapter and the core both refuse requests over 1 MiB, pools over 1024 models,
+or transcripts over 5,000 messages / 50,000 parts. A trap is reported as a
+skip, never a broken turn.
+
 Exports:
 
 ```text

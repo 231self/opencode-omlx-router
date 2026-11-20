@@ -1,0 +1,17 @@
+# The package has no npm dependencies on purpose (see scripts/security-check.mjs),
+# so only the two places where third-party code actually enters are tracked.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: monthly
+    labels:
+      - dependencies
+
+  - package-ecosystem: cargo
+    directory: "/core"
+    schedule:
+      interval: monthly
+    labels:
+      - dependencies
