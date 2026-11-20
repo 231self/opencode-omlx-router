@@ -1,0 +1,7 @@
+title = "opencode-router"
+
+[allowlist]
+description = "docs/protocol.md (removed) shows a sample cacheKey in a JSON example; it trips generic-api-key."
+paths = [
+  '''docs/protocol\.md''',
+]
