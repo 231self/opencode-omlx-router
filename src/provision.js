@@ -3,6 +3,7 @@ import os from "node:os"
 import path from "node:path"
 
 import { resolveSecret } from "./config.js"
+import { facts, join, prose } from "./format.js"
 import { paramBillions } from "./judge.js"
 
 export const DEFAULT_JUDGE_REPO = "mlx-community/Qwen3-4B-Instruct-2507-4bit"
@@ -112,17 +113,19 @@ export async function detectProvisioning({ config, fetchImpl = globalThis.fetch 
 /** Explain how to get a judge without the oMLX download helper. */
 export function provisionHint(config) {
   const base = String(config?.judge?.baseURL ?? "http://127.0.0.1:1234/v1").replace(/\/+$/, "")
-  return [
-    "Judge downloads use the oMLX admin API, which this endpoint does not expose.",
-    "Any OpenAI-compatible endpoint works as a judge; only the download helper is oMLX-specific.",
-    "",
-    "For llama.cpp:",
-    "  llama-server -m Qwen3-4B-Instruct-2507-Q4_K_M.gguf --port 8080",
-    `  opencode-model-router config set judge.baseURL http://127.0.0.1:8080/v1`,
-    `  opencode-model-router config set judge.model auto`,
-    "",
-    `Current judge endpoint: ${base}`,
-  ].join("\n")
+  return join(
+    prose(
+      "Judge downloads use the oMLX admin API, which this endpoint does not expose.",
+      "Any OpenAI-compatible endpoint works as a judge; only the download helper is oMLX-specific.",
+    ),
+    [
+      "llama.cpp",
+      "  llama-server -m Qwen3-4B-Instruct-2507-Q4_K_M.gguf --port 8080",
+      "  opencode-model-router config set judge.baseURL http://127.0.0.1:8080/v1",
+      "  opencode-model-router config set judge.model auto",
+    ],
+    facts([["endpoint", base]]),
+  )
 }
 
 export class Provisioner {

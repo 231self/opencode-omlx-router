@@ -1,4 +1,5 @@
 import { configPath, formatWeights, readConfig, resolvePolicyWeights, saveConfig } from "./config.js"
+import { facts, join, note, plural, prose, section } from "./format.js"
 import { Judge } from "./judge.js"
 import {
   Provisioner,
@@ -28,7 +29,14 @@ import {
   summariseTurns,
   writePin,
 } from "./state.js"
-import { buildStatus, formatMilliseconds, formatStatus, formatTiming, formatTuiStatus } from "./status.js"
+import {
+  buildStatus,
+  formatMilliseconds,
+  formatStatus,
+  formatTiming,
+  formatTuiStatus,
+  shortPath,
+} from "./status.js"
 import { collectDebug, formatDebug } from "./debug.js"
 import { ABI_VERSION, VERSION } from "./version.js"
 
@@ -82,6 +90,11 @@ const HELP = [
 
 function helpLine(entry) {
   return USAGE[entry.command] ?? entry.line ?? `/router ${entry.command}`
+}
+
+/** The help listing row: the command name, then its usage line. */
+function helpRow(entry) {
+  return [entry.command, helpLine(entry)]
 }
 
 /** Older command names kept working. */
@@ -149,7 +162,8 @@ function parseModel(text) {
   return { providerID, id, variant: variant ?? "default" }
 }
 
-function pinLines(pins) {
+/** One row per session pin: the model, then its routing state. */
+function pinEntries(pins) {
   const now = Date.now()
   return [...pins]
     .sort((left, right) => (Number(right.lastTurnAt) || 0) - (Number(left.lastTurnAt) || 0))
@@ -163,13 +177,14 @@ function pinLines(pins) {
             .map((block) => `${block.providerID}/${block.id}${block.providerWide ? " (provider)" : ""}`)
             .join(", ")}`
         : ""
-      return `${modelLabel(pin.model)} · ${pin.forced ? "manual" : "auto"} · ${age} old${blocked}`
+      return [modelLabel(pin.model), `${pin.forced ? "manual" : "auto"} · ${age} old${blocked}`]
     })
 }
 
 function modelLabel(reference) {
   if (!reference) return "none"
-  return `${reference.providerID}/${reference.id ?? reference.modelID}${reference.variant ? `#${reference.variant}` : ""}`
+  const variant = reference.variant && reference.variant !== "default" ? `#${reference.variant}` : ""
+  return `${reference.providerID}/${reference.id ?? reference.modelID}${variant}`
 }
 
 async function show(context, message, title = "OpenCode Router") {
@@ -181,20 +196,24 @@ async function show(context, message, title = "OpenCode Router") {
 }
 
 function weightsReport(config) {
-  const lines = [
-    `policy    ${config.policy}`,
-    `weights   ${formatWeights(resolvePolicyWeights(config))}`,
+  const blocks = [
+    section("policy", [
+      ["active", config.policy],
+      ["weights", formatWeights(resolvePolicyWeights(config))],
+    ]),
   ]
   const classes = Object.keys(config.policyByClass ?? {})
   if (classes.length) {
-    lines.push("classes")
-    for (const name of classes) {
-      lines.push(`  ${name.padEnd(16)} ${formatWeights(resolvePolicyWeights(config, name))}`)
-    }
+    blocks.push(
+      section(
+        "classes",
+        classes.map((name) => [name, formatWeights(resolvePolicyWeights(config, name))]),
+      ),
+    )
   }
-  lines.push(`config    ${configPath()}`)
-  lines.push("set policyWeights / policyByClass in config.json")
-  return lines.join("\n")
+  blocks.push(facts([["config", shortPath(configPath())]]))
+  blocks.push(note("set policyWeights / policyByClass in config.json"))
+  return join(...blocks)
 }
 
 function poolLines(config, models, providers) {
@@ -206,8 +225,8 @@ function poolLines(config, models, providers) {
     qualityScores: loadQualityScores({ config }),
     prices: loadPricing({ config }),
   })
-  const lines = [`source ${resolved.source} · ${resolved.pool.length} usable · ${resolved.candidates} available`]
-  for (const model of resolved.pool) {
+  const shown = resolved.pool.slice(0, 12)
+  const entries = shown.map((model) => {
     const quality =
       model.qualityOverride != null
         ? `${Number(model.qualityOverride).toFixed(2)}${model.qualitySource ? ` (${model.qualitySource})` : ""}`
@@ -216,22 +235,30 @@ function poolLines(config, models, providers) {
     const cost = free
       ? "free (local)"
       : `${formatCost(model.cost)}${model.costSource === "modelsdev" ? " (models.dev)" : ""}`
-    lines.push(
-      [
-        `${model.providerID}/${model.modelID}${model.variant && model.variant !== "default" ? `#${model.variant}` : ""}`,
-        `ctx=${model.limit.context}`,
-        `cost=${cost}`,
-        `local=${model.local ? "yes" : "no"}`,
-        `quality=${quality}`,
-      ].join(" · "),
-    )
+    return [
+      `${model.providerID}/${model.modelID}${model.variant && model.variant !== "default" ? `#${model.variant}` : ""}`,
+      `ctx ${model.limit.context} · cost ${cost} · quality ${quality} · local ${model.local ? "yes" : "no"}`,
+    ]
+  })
+  const blocks = [
+    section("models", entries.length ? entries : [["none", "no models selected"]]),
+  ]
+  if (resolved.pool.length > shown.length) {
+    blocks.push(note(`… ${resolved.pool.length - shown.length} more`))
   }
-  for (const warning of resolved.warnings) lines.push(`warning: ${warning}`)
-  lines.push("")
-  lines.push(`config ${configPath()}`)
-  lines.push("set models: opencode-model-router config set pool.source list")
-  lines.push(`            opencode-model-router config set pool.models '["provider/model", "..."]'`)
-  return lines.join("\n")
+  for (const warning of resolved.warnings) blocks.push(note(`warning: ${warning}`))
+  blocks.push(
+    facts([
+      ["source", `${resolved.source} · ${resolved.pool.length} usable · ${resolved.candidates} available`],
+      ["config", shortPath(configPath())],
+    ]),
+  )
+  blocks.push([
+    "set models:",
+    "  opencode-model-router config set pool.source list",
+    `  opencode-model-router config set pool.models '["provider/model"]'`,
+  ])
+  return join(...blocks)
 }
 
 function pricingLines(config, models, providers) {
@@ -243,25 +270,29 @@ function pricingLines(config, models, providers) {
     qualityScores: loadQualityScores({ config }),
     prices: loadPricing({ config }),
   })
-  const lines = []
-  for (const model of resolved.pool) {
+  const entries = resolved.pool.map((model) => {
     const localFree = model.local && config.pool.localCostZero !== false
     const price = localFree ? "free (local)" : priceText(model.cost, model.costSource)
-    lines.push(
-      `${model.providerID}/${model.modelID}${model.variant && model.variant !== "default" ? `#${model.variant}` : ""}  ${price}`,
-    )
-  }
-  if (lines.length === 0) lines.push("no models selected; run /router pool")
-  lines.push("")
-  lines.push(`source ${resolved.source} · ${resolved.pool.length} models · per million tokens`)
+    return [
+      `${model.providerID}/${model.modelID}${model.variant && model.variant !== "default" ? `#${model.variant}` : ""}`,
+      price,
+    ]
+  })
   const cache = loadPricing({ config })
-  lines.push(
-    cache
-      ? `prices  ${cache.count} models · ${cache.source} · ${formatAge(Date.now() - Number(cache.fetchedAt ?? 0))} old`
-      : "prices  none · run /router pricing refresh",
-  )
-  lines.push(`config ${configPath()}`)
-  return lines.join("\n")
+  const blocks = [
+    section("prices · per million tokens", entries.length ? entries : [["none", "no models selected"]]),
+    facts([
+      ["source", `${resolved.source} · ${plural(resolved.pool.length, "model")}`],
+      [
+        "prices",
+        cache
+          ? `${plural(cache.count, "model")} · ${cache.source} · ${formatAge(Date.now() - Number(cache.fetchedAt ?? 0))} old`
+          : "none · run /router pricing refresh",
+      ],
+      ["config", shortPath(configPath())],
+    ]),
+  ]
+  return join(...blocks)
 }
 
 function formatAge(ms) {
@@ -301,37 +332,60 @@ function formatCost(cost) {
 }
 
 function explainLines(record) {
-  const lines = [
-    `chosen   ${record.chosen ?? "none"}${record.pinned ? " · pinned" : ""}`,
-    `source   ${record.source ?? "?"} · ${record.reason ?? "?"} · ${record.stage ?? ""}`,
-    `policy   ${record.policy ?? "?"} · complexity ${record.complexity ?? "?"} · ${record.turnClass ?? "?"}`,
-    `applied  ${record.applied ?? "?"}${record.error ? ` · error ${record.error}` : ""}`,
+  const blocks = [
+    section("decision", [
+      ["model", `${record.chosen ?? "none"}${record.pinned ? " · pinned" : ""}`],
+      ["source", [record.source, record.reason, record.stage].filter(Boolean).join(" · ") || "?"],
+      ["policy", `${record.policy ?? "?"} · complexity ${record.complexity ?? "?"} · ${record.turnClass ?? "?"}`],
+      ["applied", `${record.applied ?? "?"}${record.error ? ` · error ${record.error}` : ""}`],
+    ]),
   ]
   const verdict = record.verdict
   if (verdict) {
-    lines.push(
-      `verdict  ${verdict.task}/${verdict.complexity} · ${verdict.reasoningNeed} reasoning · ${verdict.contextNeed} context · tools ${verdict.needsTools ? "yes" : "no"} · confidence ${Number(verdict.confidence ?? 0).toFixed(2)}`,
+    blocks.push(
+      section("verdict", [
+        ["task", `${verdict.task} / ${verdict.complexity}`],
+        ["reasoning", verdict.reasoningNeed],
+        ["context", verdict.contextNeed],
+        ["tools", verdict.needsTools ? "yes" : "no"],
+        ["confidence", Number(verdict.confidence ?? 0).toFixed(2)],
+      ]),
     )
   }
   const judge = record.judge ?? {}
   if (judge.used !== undefined || judge.ms !== undefined) {
-    lines.push(`judge    used ${judge.used ? "yes" : "no"} · cached ${judge.cached ? "yes" : "no"} · ${judge.ms ?? 0} ms`)
+    blocks.push(
+      section("judge", [
+        ["used", judge.used ? "yes" : "no"],
+        ["cached", judge.cached ? "yes" : "no"],
+        ["latency", `${judge.ms ?? 0}ms`],
+      ]),
+    )
   }
   const timing = record.timing
   if (timing) {
-    lines.push(`timing   route ${formatMilliseconds(timing.routeMs)} · judge ${formatMilliseconds(timing.judgeMs)} · switch ${formatMilliseconds(timing.switchMs)}`)
+    blocks.push(
+      section("timing", [
+        ["route", formatMilliseconds(timing.routeMs)],
+        ["judge", formatMilliseconds(timing.judgeMs)],
+        ["switch", formatMilliseconds(timing.switchMs)],
+      ]),
+    )
   }
   const top = Array.isArray(record.top) ? record.top : []
   if (top.length > 0) {
-    lines.push("top")
-    for (const entry of top) {
-      lines.push(
-        `  ${entry.providerID}/${entry.id}${entry.variant && entry.variant !== "default" ? `#${entry.variant}` : ""}  score ${Number(entry.score ?? 0).toFixed(3)}  cost $${Number(entry.costUsd ?? 0).toFixed(6)}`,
-      )
-    }
+    blocks.push(
+      section(
+        "candidates",
+        top.map((entry) => [
+          `${entry.providerID}/${entry.id}${entry.variant && entry.variant !== "default" ? `#${entry.variant}` : ""}`,
+          `score ${Number(entry.score ?? 0).toFixed(3)} · cost $${Number(entry.costUsd ?? 0).toFixed(6)}`,
+        ]),
+      ),
+    )
   }
-  if (record.hint) lines.push(`hint     ${record.hint}`)
-  return lines.join("\n")
+  if (record.hint) blocks.push(note(record.hint))
+  return join(...blocks)
 }
 
 async function poolCatalog(context) {
@@ -408,9 +462,11 @@ async function poolMenu(context) {
     if (favorites.favorite.length === 0) {
       await show(
         context,
-        "Pool source is now favorites, but you have not favorited any models yet.\n\n" +
-          "Open OpenCode's model picker and favorite the models you want, then run /router pool again.\n\n" +
+        prose(
+          "Pool source is now favorites, but you have not favorited any models yet.",
+          "Open OpenCode's model picker and favorite the models you want, then run /router pool again.",
           "Or run /router pool and choose 'Enter an explicit list' to name them directly.",
+        ),
       )
     } else {
       await context.ui.toast.show({
@@ -424,7 +480,7 @@ async function poolMenu(context) {
 
   if (source === "list") {
     if (!context.ui.dialog.prompt) {
-      await show(context, "This host has no text prompt. Edit pool.models in " + configPath() + ".")
+      await show(context, prose(`This host has no text prompt. Edit pool.models in ${shortPath(configPath())}.`))
       return
     }
     const text = await context.ui.dialog.prompt({
@@ -445,8 +501,10 @@ async function poolMenu(context) {
     if (missing.length > 0) {
       await show(
         context,
-        `Not in the host model catalog: ${missing.join(", ")}\n\n` +
+        prose(
+          `Not in the host model catalog: ${missing.join(", ")}`,
           `Examples: ${[...available].slice(0, 6).join(", ") || "(none advertised)"}`,
+        ),
       )
       return
     }
@@ -478,17 +536,18 @@ async function poolMenu(context) {
   }
 }
 
-function taskLine(task) {
+/** One download task row: the repo, then its status and progress. */
+function taskEntry(task) {
   const total = Number(task.total_size) || 0
   const done = Number(task.downloaded_size) || 0
   const percent = total > 0 ? Math.min(100, Math.round((done / total) * 100)) : Number(task.progress) || 0
-  return `${task.repo_id} · ${task.status} · ${percent}% (${formatBytes(done)} / ${formatBytes(total)})`
+  return [task.repo_id, `${task.status} · ${percent}% (${formatBytes(done)} / ${formatBytes(total)})`]
 }
 
 async function offerPull(context, config, repo, reason, background) {
   const backend = await detectProvisioning({ config })
   if (!backend.supported) {
-    await show(context, [reason, provisionHint(config)].filter(Boolean).join("\n\n"))
+    await show(context, join(reason ? note(reason) : "", provisionHint(config)))
     return
   }
   const provision = new Provisioner({ config })
@@ -498,20 +557,22 @@ async function offerPull(context, config, repo, reason, background) {
       provision,
       repo: repo || provision.defaultRepo(),
       confirm: async (summary) => {
-        const lines = [
-          reason ? `${reason}\n` : "",
-          `Model    ${summary.repo}`,
-          summary.params ? `Params   ${summary.params}` : "",
-          `Weights  ${summary.weightsFormatted}`,
-          `Download ${summary.sizeFormatted} (all files)`,
-          `License  ${summary.license}`,
-          `Source   Hugging Face · MLX: ${summary.mlx ? "yes" : "no"}`,
-          "",
-          "This downloads into oMLX's model directory and is served locally.",
-        ].filter(Boolean)
+        const rows = [["model", summary.repo]]
+        if (summary.params) rows.push(["params", summary.params])
+        rows.push(
+          ["weights", summary.weightsFormatted],
+          ["size", `${summary.sizeFormatted} (all files)`],
+          ["license", summary.license],
+          ["source", `Hugging Face · MLX ${summary.mlx ? "yes" : "no"}`],
+        )
+        const blocks = [
+          section("download", rows),
+          note("This downloads into oMLX's model directory and is served locally."),
+        ]
+        if (reason) blocks.unshift(note(reason))
         return context.ui.dialog.confirm({
           title: "Download judge model",
-          message: lines.join("\n"),
+          message: join(...blocks),
           label: { confirm: "Download", cancel: "Cancel" },
         })
       },
@@ -528,7 +589,7 @@ async function offerPull(context, config, repo, reason, background) {
 
   await context.ui.toast.show({
     title: "OpenCode Router",
-    message: `downloading ${result.summary.repo} (${result.summary.sizeFormatted}); check /router judge status`,
+    message: `downloading ${String(result.summary.repo).split("/").pop()} (${result.summary.sizeFormatted}); check /router judge status`,
     variant: "success",
     duration: 5000,
   })
@@ -573,7 +634,7 @@ async function judgeTasks(context, config) {
       await show(context, "no judge downloads")
       return
     }
-    await show(context, tasks.map(taskLine).join("\n"))
+    await show(context, join(section("downloads", tasks.map(taskEntry))))
   } catch (error) {
     await show(context, `cannot read downloads: ${error?.message ?? error}`)
   }
@@ -591,7 +652,7 @@ async function cancelJudgeTask(context, config, taskID) {
     }
     const approved = await context.ui.dialog.confirm({
       title: "Cancel download",
-      message: taskLine(target),
+      message: facts([taskEntry(target)]).join("\n"),
       label: { confirm: "Cancel download", cancel: "Keep" },
     })
     if (!approved) return
@@ -695,7 +756,10 @@ async function runCommand(context, input) {
     case "version": {
       await show(
         context,
-        [`OpenCode Router ${VERSION} · ${HOST} · ABI ${ABI_VERSION}`, `config  ${configPath()}`].join("\n"),
+        join(
+          `OpenCode Router ${VERSION} · ${HOST} · ABI ${ABI_VERSION}`,
+          facts([["config", shortPath(configPath())]]),
+        ),
       )
       return
     }
@@ -840,12 +904,10 @@ async function runCommand(context, input) {
         await show(context, withUsage("no routing pins", "pins"))
         return
       }
-      const lines = pinLines(pins).slice(0, 20)
-      if (pins.length > lines.length) lines.push(`… ${pins.length - lines.length} more`)
-      await show(
-        context,
-        withUsage([`${pins.length} sessions with routing state`, "", ...lines].join("\n"), "pins"),
-      )
+      const shown = pinEntries(pins).slice(0, 10)
+      const blocks = [section(`${plural(pins.length, "session")} with routing state`, shown)]
+      if (pins.length > shown.length) blocks.push(note(`… ${pins.length - shown.length} more`))
+      await show(context, withUsage(join(...blocks), "pins"))
       return
     }
     case "quality": {
@@ -866,17 +928,17 @@ async function runCommand(context, input) {
       }
       const source = qualitySource(config)
       const cache = readQualityCache()
-      if (!cache) {
-        await show(context, withUsage(`source   ${source}\ncache    none`, "quality"))
-        return
+      const rows = [["source", cache ? cache.source : source]]
+      if (cache) {
+        for (const [name, entry] of Object.entries(cache.sources ?? {})) {
+          rows.push([name, `${entry.count} models · ${formatAge(qualityCacheAgeMs(entry))} old`])
+        }
+        rows.push(["models", String(cache.count)])
+        rows.push(["cache", shortPath(qualityCachePath())])
+      } else {
+        rows.push(["cache", "none"])
       }
-      const lines = [`source   ${cache.source}`]
-      for (const [name, entry] of Object.entries(cache.sources ?? {})) {
-        lines.push(`${name.padEnd(8)} ${entry.count} models · ${formatAge(qualityCacheAgeMs(entry))} old`)
-      }
-      lines.push(`models   ${cache.count}`)
-      lines.push(`cache    ${qualityCachePath()}`)
-      await show(context, withUsage(lines.join("\n"), "quality"))
+      await show(context, withUsage(join(facts(rows)), "quality"))
       return
     }
     case "history": {
@@ -890,13 +952,24 @@ async function runCommand(context, input) {
         await show(context, "no decisions recorded yet")
         return
       }
-      const lines = decisions.map((record) => {
+      const entries = decisions.map((record) => {
         const when = new Date(record.ts ?? Date.now()).toLocaleTimeString()
         const role = record.role === "subagent" ? `sub(${record.agent ?? "?"})` : "root"
         const timing = record.timing ?? {}
-        return `${when} ${role} ${record.chosen ?? "?"} ${record.pinned ? "pinned" : "switched"} ${record.stage ?? ""} · judge ${formatMilliseconds(timing.judgeMs ?? record.judge?.ms ?? 0)} route ${formatMilliseconds(timing.routeMs ?? 0)}`
+        return [
+          `${when} ${role}`,
+          [
+            record.chosen ?? "?",
+            record.pinned ? "pinned" : "switched",
+            record.stage,
+            `judge ${formatMilliseconds(timing.judgeMs ?? record.judge?.ms ?? 0)}`,
+            `route ${formatMilliseconds(timing.routeMs ?? 0)}`,
+          ]
+            .filter(Boolean)
+            .join(" · "),
+        ]
       })
-      await show(context, lines.join("\n"))
+      await show(context, join(section("history", entries)))
       return
     }
     case "timing": {
@@ -911,15 +984,27 @@ async function runCommand(context, input) {
         return
       }
       const summary = summariseTurns(turns, limit)
-      const lines = [formatTiming(summary) ?? "no turn timings", ""]
-      for (const turn of turns.slice(-10)) {
+      const entries = turns.slice(-10).map((turn) => {
         const when = new Date(turn.ts ?? Date.now()).toLocaleTimeString()
         const role = turn.role === "subagent" ? `sub(${turn.agent || "?"})` : "root"
-        lines.push(
-          `${when} ${role} ${turn.usedModel ?? turn.model ?? "?"} · judge ${formatMilliseconds(turn.judgeMs)} · model ${formatMilliseconds(turn.modelMs)} · tools ${formatMilliseconds(turn.toolMs)} · turn ${formatMilliseconds(turn.turnMs)}`,
-        )
-      }
-      await show(context, lines.join("\n"))
+        return [
+          `${when} ${role}`,
+          [
+            turn.usedModel ?? turn.model ?? "?",
+            `judge ${formatMilliseconds(turn.judgeMs)}`,
+            `model ${formatMilliseconds(turn.modelMs)}`,
+            `tools ${formatMilliseconds(turn.toolMs)}`,
+            `turn ${formatMilliseconds(turn.turnMs)}`,
+          ].join(" · "),
+        ]
+      })
+      await show(
+        context,
+        join(
+          formatTiming(summary) ?? note("no turn timings"),
+          section("recent turns", entries),
+        ),
+      )
       return
     }
     case "explain": {
@@ -1008,13 +1093,17 @@ async function runCommand(context, input) {
       const judge = new Judge({ config: config.judge })
       try {
         const probe = await judge.probe()
-        const lines = [
-          `models   ${probe.models.join(", ")}`,
-          `selected ${probe.selected}`,
-          `latency  ${probe.ms} ms`,
-          `sample   ${probe.sample ? JSON.stringify(probe.sample) : "unparsable"}`,
-        ]
-        await show(context, lines.join("\n"))
+        await show(
+          context,
+          join(
+            section("judge", [
+              ["models", probe.models.join(", ")],
+              ["selected", probe.selected],
+              ["latency", `${probe.ms}ms`],
+              ["sample", probe.sample ? JSON.stringify(probe.sample) : "unparsable"],
+            ]),
+          ),
+        )
       } catch (error) {
         await show(context, `judge unavailable: ${error?.message ?? error}`)
       }
@@ -1045,14 +1134,22 @@ async function runCommand(context, input) {
         if (!entry) {
           await show(
             context,
-            [`unknown command: ${wanted}`, "", ...HELP.map(helpLine)].join("\n"),
+            join(note(`unknown command: ${wanted}`), section("commands", HELP.map(helpRow))),
           )
           return
         }
-        await show(context, [helpLine(entry), "", entry.detail].join("\n"))
+        await show(
+          context,
+          join(
+            section(entry.command, [
+              ["usage", helpLine(entry)],
+              ["detail", entry.detail],
+            ]),
+          ),
+        )
         return
       }
-      await show(context, HELP.map(helpLine).join("\n"))
+      await show(context, join(section("commands", HELP.map(helpRow))))
       return
     }
     default:

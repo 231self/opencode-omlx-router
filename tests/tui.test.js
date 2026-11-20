@@ -55,7 +55,10 @@ function fakeContext(models = defaultModels()) {
           return selectAnswers.length ? selectAnswers.shift() : "quality"
         },
         prompt: async () => promptAnswer,
-        confirm: async () => confirmAnswer,
+        confirm: async ({ message } = {}) => {
+          if (message) messages.push({ kind: "confirm", message })
+          return confirmAnswer
+        },
       },
       toast: { show: async ({ title, message }) => messages.push({ kind: "toast", title, message }) },
     },
@@ -249,15 +252,17 @@ test("/router pricing fills host gaps from the table and never invents $0", asyn
   tui.setup(context)
   await command().run("pricing")
   const alert = messages.find((entry) => entry.kind === "alert")
-  expect(alert.message).toContain(
-    "anthropic/claude-opus-5-5  in $4 · out $20 · cache read $0.2 /M (models.dev)",
-  )
-  expect(alert.message).toContain(
-    "openai/gpt-6.1-sol  in $2 · out $10 · cache read $0.1 /M (models.dev)",
-  )
-  expect(alert.message).toContain("deepseek/deepseek-flash  in $0.2 · out $0.8 · cache read $0.05 /M")
-  expect(alert.message).toContain("acme/mystery  unknown (no pricing data)")
-  expect(alert.message).toContain("prices  2 models · modelsdev")
+  expect(alert.message).toContain("anthropic/claude-opus-5-5")
+  expect(alert.message).toContain("in $4 · out $20")
+  expect(alert.message).toContain("cache read $0.2 /M (models.dev)")
+  expect(alert.message).toContain("openai/gpt-6.1-sol")
+  expect(alert.message).toContain("in $2 · out $10")
+  expect(alert.message).toContain("cache read $0.1 /M (models.dev)")
+  expect(alert.message).toContain("deepseek/deepseek-flash")
+  expect(alert.message).toContain("in $0.2 · out $0.8 · cache read $0.05 /M")
+  expect(alert.message).toContain("acme/mystery")
+  expect(alert.message).toContain("unknown (no pricing data)")
+  expect(alert.message).toContain("2 models · modelsdev")
 })
 
 test("/router quality reports the cached score source", async () => {
@@ -409,9 +414,11 @@ test("/router timing reports local judge vs remote model time", async () => {
   tui.setup(context)
   await command().run("timing")
   const text = messages.map((entry) => String(entry.message)).join("\n")
-  expect(text).toContain("local judge 800ms")
-  expect(text).toContain("remote model 7.0s")
-  expect(text).toContain("turn 10.0s")
+  expect(text).toContain("local judge")
+  expect(text).toContain("800ms (8%)")
+  expect(text).toContain("remote model")
+  expect(text).toContain("7.0s (70%)")
+  expect(text).toContain("10.0s")
 })
 
 test("tui refreshes the model and shows a switch toast", async () => {
@@ -502,8 +509,10 @@ test("/router explain shows the decision, scores, costs, and verdict", async () 
   tui.setup(context)
   await command().run("explain")
   const text = messages.map((entry) => String(entry.message)).join("\n")
-  expect(text).toContain("chosen   kilo/anthropic/claude-fable-5.2")
-  expect(text).toContain("verdict  edit/4")
+  expect(text).toContain("model")
+  expect(text).toContain("kilo/anthropic/claude-fable-5.2")
+  expect(text).toContain("verdict")
+  expect(text).toContain("edit / 4")
   expect(text).toContain("score 0.710")
   expect(text).toContain("cost $0.008000")
 })
@@ -593,7 +602,7 @@ test("/router help lists every command and can show one", async () => {
   await command().run("help pricing")
   const one = messages.at(-1).message
   expect(one).toContain("/router pricing [refresh]")
-  expect(one).toContain("price source")
+  expect(one).toContain("Input/output/cache prices")
 
   await command().run("help nope")
   expect(messages.at(-1).message).toContain("unknown command: nope")
@@ -629,4 +638,147 @@ test("the main menu reaches every subcommand and the help picker", async () => {
   await command().run("menu")
   expect(messages.at(-1).message).toContain("/router subagents on|off")
   expect(messages.at(-1).message).toContain("child sessions")
+})
+
+/** Value start columns of the fact rows under a section title. */
+function valueColumns(text, title) {
+  const lines = text.split("\n")
+  const start = lines.indexOf(title)
+  const columns = []
+  for (let index = start + 1; index < lines.length && lines[index] !== ""; index += 1) {
+    const match = lines[index].match(/^ {2}\S+( {2,})\S/)
+    if (match) columns.push(lines[index].indexOf(match[1]) + match[1].length)
+  }
+  return columns
+}
+
+test("every menu and submenu popup is wrapped, aligned text without long lines", async () => {
+  const { dir } = environment()
+  const previousHome = process.env.HOME
+  process.env.HOME = dir
+  try {
+    const config = readConfig({ write: true }).config
+    saveConfig({
+      ...config,
+      pool: { ...config.pool, source: "list", models: ["deepseek/deepseek-flash"] },
+      judge: { ...config.judge, baseURL: "http://127.0.0.1:9/v1", timeoutMs: 250 },
+    })
+    writePin("opencode", "ses_pin", {
+      model: { providerID: "deepseek", id: "deepseek-flash", variant: "default" },
+      forced: true,
+      source: "user",
+      since: Date.now() - 60_000,
+      lastTurnAt: Date.now() - 60_000,
+      blocked: [
+        {
+          providerID: "deepseek",
+          id: "deepseek-flash",
+          until: Date.now() + 60_000,
+          reason: "429",
+          providerWide: true,
+        },
+      ],
+    })
+    appendDecision(
+      "opencode",
+      {
+        ts: Date.now(),
+        session: sessionHash("ses_1"),
+        chosen: "kilo/anthropic/claude-fable-5.2",
+        source: "judge",
+        reason: "first-turn",
+        stage: "judge/cost",
+        policy: "cost",
+        complexity: 4,
+        turnClass: "agentic",
+        applied: "same-turn",
+        pinned: true,
+        judge: { used: true, cached: false, ms: 700 },
+        timing: { routeMs: 900, judgeMs: 700, coreMs: 5, switchMs: 2 },
+        verdict: {
+          task: "edit",
+          complexity: 4,
+          needsTools: true,
+          reasoningNeed: "high",
+          contextNeed: "medium",
+          confidence: 0.95,
+        },
+        top: [{ providerID: "kilo", id: "anthropic/claude-fable-5.2", score: 0.71, costUsd: 0.008 }],
+      },
+      process.env,
+    )
+    appendTurn(
+      "opencode",
+      {
+        ts: Date.now(),
+        role: "root",
+        usedModel: "deepseek/deepseek-flash",
+        turnMs: 10_000,
+        routeMs: 1_000,
+        judgeMs: 800,
+        modelMs: 7_000,
+        toolMs: 2_000,
+      },
+      process.env,
+    )
+
+    const { context, messages, command, setSelect } = fakeContext()
+    tui.setup(context)
+    for (const input of [
+      "status",
+      "version",
+      "debug",
+      "policy custom",
+      "pool",
+      "pricing",
+      "pins",
+      "quality",
+      "history",
+      "timing",
+      "explain",
+      "judge",
+      "judge status",
+      "judge cancel",
+      "help",
+      "help pricing",
+      "help nope",
+      "history many",
+      "pins clear",
+    ]) {
+      setSelect("close")
+      await command().run(input)
+    }
+
+    // The consent dialog and the download list share the same layout rules.
+    const fake = fakeAdminFetch()
+    const original = globalThis.fetch
+    globalThis.fetch = fake.fetchImpl
+    try {
+      await command().run("judge status")
+      await command().run("judge pull")
+    } finally {
+      globalThis.fetch = original
+    }
+
+    const popups = messages.filter((entry) => typeof entry.message === "string")
+    expect(popups.length).toBeGreaterThan(15)
+    for (const entry of popups) {
+      for (const line of String(entry.message).split("\n")) {
+        // Fixture paths are long; real ones shorten to ~ under the home dir.
+        expect(line.replace(dir, "").length).toBeLessThanOrEqual(80)
+      }
+    }
+    expect(popups.some((entry) => entry.kind === "confirm")).toBe(true)
+
+    // Facts under one section title share a value column.
+    const explain = popups.map((entry) => entry.message).find((text) => text.includes("\nverdict\n"))
+    expect(explain).toBeDefined()
+    for (const title of ["decision", "verdict", "judge", "timing"]) {
+      const columns = valueColumns(explain, title)
+      expect(columns.length).toBeGreaterThan(1)
+      expect(new Set(columns).size).toBe(1)
+    }
+  } finally {
+    process.env.HOME = previousHome
+  }
 })

@@ -1,6 +1,7 @@
 import os from "node:os"
 
 import { readConfig } from "./config.js"
+import { facts, join, plural, section } from "./format.js"
 import {
   hostStateDir,
   listPins,
@@ -74,7 +75,7 @@ export function formatMilliseconds(value) {
   return `${Math.round(milliseconds)}ms`
 }
 
-function shortPath(value) {
+export function shortPath(value) {
   const text = String(value ?? "")
   const home = os.homedir()
   return home && text.startsWith(home) ? `~${text.slice(home.length)}` : text
@@ -90,62 +91,99 @@ function shortHost(value) {
 
 /** Compact status for the TUI dialog; the CLI keeps the wider format. */
 export function formatTuiStatus(status) {
-  const lines = [
+  const blocks = [
     `OpenCode Router ${status.version} · ${status.host}`,
-    `state   ${status.enabled ? "enabled" : "disabled"} · policy ${status.policy} · pool ${status.pool}`,
-    `judge   ${status.judge.enabled ? status.judge.model : "disabled"} · ${shortHost(status.judge.baseURL)}`,
-    `pins    ${status.pins} sessions${status.pinModels.length ? ` · ${status.pinModels.map(modelLabel).join(", ")}` : ""}`,
+    section("state", [
+      [
+        "routing",
+        `${status.enabled ? "enabled" : "disabled"} · policy ${status.policy} · pool ${status.pool}`,
+      ],
+      [
+        "judge",
+        `${status.judge.enabled ? status.judge.model : "disabled"} · ${shortHost(status.judge.baseURL)}`,
+      ],
+      [
+        "pins",
+        `${plural(status.pins, "session")}${status.pinModels.length ? ` · ${status.pinModels.map(modelLabel).join(", ")}` : ""}`,
+      ],
+    ]),
   ]
   if (status.timing?.count) {
     const average = status.timing.averages
-    lines.push(
-      `timing  judge ${formatMilliseconds(average.judgeMs)} · remote ${formatMilliseconds(average.modelMs)} · turn ${formatMilliseconds(average.turnMs)}`,
+    blocks.push(
+      section("timing", [
+        ["judge", formatMilliseconds(average.judgeMs)],
+        ["remote", formatMilliseconds(average.modelMs)],
+        ["turn", formatMilliseconds(average.turnMs)],
+      ]),
     )
   }
   if (status.last) {
-    lines.push(
-      `last    ${status.last.chosen ?? "unknown"} · ${status.last.stage ?? ""}${status.last.pinned ? " · pinned" : ""}`,
-    )
-    if (status.last.hint) lines.push(`hint    ${status.last.hint}`)
+    const rows = [
+      ["model", status.last.chosen ?? "unknown"],
+      ["stage", [status.last.stage, status.last.pinned ? "pinned" : null].filter(Boolean).join(" · ")],
+    ]
+    if (status.last.hint) rows.push(["hint", status.last.hint])
+    blocks.push(section("last", rows))
   }
-  lines.push(`config  ${shortPath(status.configPath)}`)
-  if (status.error) lines.push(`warning ${status.error}`)
-  return lines.join("\n")
+  blocks.push(facts([["config", shortPath(status.configPath)]]))
+  if (status.error) blocks.push(facts([["warning", status.error]]))
+  return join(...blocks)
 }
 
 export function formatTiming(summary) {
   if (!summary?.count) return null
   const share = (value) => `${Math.round((Number(value) || 0) * 100)}%`
   const average = summary.averages
-  return (
-    `local judge ${formatMilliseconds(average.judgeMs)} (${share(summary.shares.judge)}) · ` +
-    `remote model ${formatMilliseconds(average.modelMs)} (${share(summary.shares.model)}) · ` +
-    `tools/other ${formatMilliseconds(average.toolMs)} (${share(summary.shares.tools)}) · ` +
-    `turn ${formatMilliseconds(average.turnMs)} (last ${summary.count})`
-  )
+  return section("timing", [
+    ["local judge", `${formatMilliseconds(average.judgeMs)} (${share(summary.shares.judge)})`],
+    ["remote model", `${formatMilliseconds(average.modelMs)} (${share(summary.shares.model)})`],
+    ["tools/other", `${formatMilliseconds(average.toolMs)} (${share(summary.shares.tools)})`],
+    ["turn", `${formatMilliseconds(average.turnMs)} (last ${summary.count})`],
+  ]).join("\n")
 }
 
 function modelLabel(model) {
   if (!model) return "none"
   if (typeof model === "string") return model
-  return `${model.providerID}/${model.id ?? model.modelID}${model.variant ? `#${model.variant}` : ""}`
+  const variant = model.variant && model.variant !== "default" ? `#${model.variant}` : ""
+  return `${model.providerID}/${model.id ?? model.modelID}${variant}`
 }
 
 export function formatStatus(status) {
-  const lines = [
+  const blocks = [
     `${status.name} ${status.version} · ${status.host}`,
-    `state      ${status.enabled ? "enabled" : "disabled"} · policy ${status.policy} · pool ${status.pool}`,
-    `config     ${status.configPath}${status.configExists ? "" : " (not created yet)"}`,
-    `state dir  ${status.stateDir}`,
-    `judge      ${status.judge.enabled ? status.judge.model : "disabled"} · ${status.judge.baseURL}`,
-    `pins       ${status.pins} sessions${status.pinModels.length ? ` (${status.pinModels.map(modelLabel).join(", ")})` : ""}`,
-    `core       ${status.core?.abi ? `ABI ${status.core.abi}` : "not loaded"}`,
-    `last       ${status.last ? `${status.last.chosen ?? "unknown"} · ${status.last.stage ?? ""} · ${status.last.pinned ? "pinned" : "switched"}` : "none"}`,
+    section("state", [
+      [
+        "routing",
+        `${status.enabled ? "enabled" : "disabled"} · policy ${status.policy} · pool ${status.pool}`,
+      ],
+      ["config", `${shortPath(status.configPath)}${status.configExists ? "" : " (not created yet)"}`],
+      ["state dir", shortPath(status.stateDir)],
+      ["judge", `${status.judge.enabled ? status.judge.model : "disabled"} · ${status.judge.baseURL}`],
+      [
+        "pins",
+        `${plural(status.pins, "session")}${status.pinModels.length ? ` · ${status.pinModels.map(modelLabel).join(", ")}` : ""}`,
+      ],
+      ["core", status.core?.abi ? `ABI ${status.core.abi}` : "not loaded"],
+    ]),
+    section(
+      "last",
+      status.last
+        ? [
+            ["model", status.last.chosen ?? "unknown"],
+            [
+              "stage",
+              [status.last.stage, status.last.pinned ? "pinned" : "switched"].filter(Boolean).join(" · "),
+            ],
+          ]
+        : [["decision", "none"]],
+    ),
   ]
   const timing = formatTiming(status.timing)
-  if (timing) lines.push(`timing     ${timing}`)
-  if (status.error) lines.push(`warning    ${status.error}`)
-  return lines.join("\n")
+  if (timing) blocks.push(timing)
+  if (status.error) blocks.push(facts([["warning", status.error]]))
+  return join(...blocks)
 }
 
 export { modelLabel }

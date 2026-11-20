@@ -48,8 +48,8 @@ test("formatStatus always shows the essentials", () => {
   const text = formatStatus(buildStatus({ host: "opencode", env, core: { abi: 1 } }))
   expect(text).toContain("opencode-router 0.2.6")
   expect(text).toContain("policy cost")
-  expect(text).toContain("core       ABI 1")
-  expect(text).toContain("last       none")
+  expect(text).toMatch(/core\s+ABI 1/)
+  expect(text).toMatch(/decision\s+none/)
 })
 
 test("status and formatting expose judge vs remote timing", () => {
@@ -73,14 +73,16 @@ test("status and formatting expose judge vs remote timing", () => {
   expect(status.timing.count).toBe(1)
   expect(status.lastTurn.modelMs).toBe(7_000)
   const line = formatTiming(status.timing)
-  expect(line).toContain("local judge 800ms")
-  expect(line).toContain("remote model 7.0s")
+  expect(line).toContain("local judge")
+  expect(line).toContain("800ms (8%)")
+  expect(line).toContain("remote model")
+  expect(line).toContain("7.0s (70%)")
   expect(line).toContain("(last 1)")
-  expect(formatStatus(status)).toContain("timing     local judge")
+  expect(formatStatus(status)).toContain("local judge")
 })
 
 test("compact TUI status stays short and readable", () => {
-  const { env } = tempEnv()
+  const { dir, env } = tempEnv()
   appendTurn(
     "opencode",
     {
@@ -96,10 +98,11 @@ test("compact TUI status stays short and readable", () => {
   )
   const text = formatTuiStatus(buildStatus({ host: "opencode", env }))
   const lines = text.split("\n")
-  expect(lines.length).toBeLessThanOrEqual(8)
-  expect(lines.every((line) => line.length < 100)).toBe(true)
-  expect(text).toContain("state   enabled")
-  expect(text).toContain("judge   auto")
-  expect(text).toContain("timing  judge 800ms")
-  expect(text).toContain("config  /")
+  expect(lines.length).toBeLessThanOrEqual(16)
+  // Fixture paths are long; real ones shorten to ~ under the home dir.
+  expect(lines.every((line) => line.replace(dir, "").length <= 80)).toBe(true)
+  expect(text).toMatch(/routing\s+enabled/)
+  expect(text).toMatch(/judge\s+auto/)
+  expect(text).toMatch(/judge\s+800ms/)
+  expect(text).toMatch(/config\s+/)
 })

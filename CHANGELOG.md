@@ -2,6 +2,16 @@
 
 ## 0.2.6 — 2026-11-21
 
+### Changed
+
+- Every `/router` popup — menus and subcommands alike — is now labelled,
+  aligned, wrapped text instead of long `·`-chained lines: section titles,
+  a label column, one fact per row, and values wrapped under a hanging indent
+  (`src/format.js`). The same layout renders in the OpenCode TUI, Kilo, and
+  the CLI, and a regression test sweeps every popup asserting no line runs
+  past 80 columns and that rows in a section share one value column.
+- Model labels no longer show a `#default` variant suffix.
+
 ### Security
 
 - `bun run security` and a CI job fail the build on secret-shaped strings in

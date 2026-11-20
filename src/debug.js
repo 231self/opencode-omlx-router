@@ -1,6 +1,7 @@
 import os from "node:os"
 
 import { readConfig } from "./config.js"
+import { facts, join, section } from "./format.js"
 import { judgeAvailability } from "./provision.js"
 import { qualityCacheAgeMs, qualitySource, readQualityCache } from "./quality.js"
 import { readDecisions, readTurns, summariseTurns } from "./state.js"
@@ -148,54 +149,97 @@ export async function collectDebug({
 export function formatDebug(info) {
   const config = info.config ?? {}
   const judge = info.judge ?? {}
-  const lines = [
+  const pool = config.pool ?? {}
+  const blocks = [
     `OpenCode Router ${info.version} · ${info.host} · ABI ${info.abi}`,
-    `core     ${info.core?.abi ? `ABI ${info.core.abi} · ${shortPath(info.core.path)}` : "not loaded"}`,
-    `config   ${shortPath(info.configPath)}${info.configExists ? "" : " (not created yet)"}`,
-    `state    ${shortPath(info.stateDir)}`,
-    `routing  ${info.enabled ? "enabled" : "disabled"} · policy ${config.policy} · pool ${config.pool?.source}`,
-    `judge    ${config.judge?.model} · ${hostLabel(config.judge?.baseURL)} · ${judgeLine(judge)}`,
-    `quality  ${qualityLine(info.quality)}`,
-    `pins     ${info.pins}${info.pinModels?.length ? ` · ${info.pinModels.map(modelLabel).join(", ")}` : ""}`,
+    section("core", [
+      ["loaded", info.core?.abi ? `ABI ${info.core.abi} · ${shortPath(info.core.path)}` : "not loaded"],
+    ]),
+    section("paths", [
+      ["config", `${shortPath(info.configPath)}${info.configExists ? "" : " (not created yet)"}`],
+      ["state", shortPath(info.stateDir)],
+    ]),
+    section("routing", [
+      ["enabled", info.enabled ? "yes" : "no"],
+      ["policy", config.policy ?? "?"],
+      [
+        "pool",
+        [pool.source, ...(Array.isArray(pool.models) ? pool.models : [])].filter(Boolean).join(" · ") ||
+          "?",
+      ],
+      ["retention", config.pin?.mode ?? "?"],
+      ["optimiser", config.optimiser?.enabled ? "on" : "off"],
+      ["subagents", config.subagents?.enabled ? "on" : "off"],
+      ["debug", config.debug ? "on" : "off"],
+    ]),
+    section("judge", [
+      ["model", `${config.judge?.model ?? "?"} · ${hostLabel(config.judge?.baseURL)}`],
+      ["status", judgeLine(judge)],
+    ]),
+    section("quality", qualityRows(info.quality)),
   ]
-  if (info.lastDecision) {
-    const record = info.lastDecision
-    const timing = record.timing ?? {}
-    lines.push(
-      `last     ${record.chosen ?? "unknown"} · ${record.stage ?? ""}${record.pinned ? " · pinned" : ""} · judge ${formatMilliseconds(timing.judgeMs ?? record.judge?.ms ?? 0)} route ${formatMilliseconds(timing.routeMs ?? 0)}`,
-    )
-  }
-  if (info.timing?.count) {
-    const average = info.timing.averages
-    lines.push(
-      `timing   judge ${formatMilliseconds(average.judgeMs)} · remote ${formatMilliseconds(average.modelMs)} · turn ${formatMilliseconds(average.turnMs)} (last ${info.timing.count})`,
-    )
-  }
+  const sessions = [
+    [
+      "pins",
+      `${info.pins}${info.pinModels?.length ? ` · ${info.pinModels.map(modelLabel).join(", ")}` : ""}`,
+    ],
+  ]
   if (info.blocked?.length) {
     const blocked = info.blocked
       .slice(0, 3)
       .map((entry) => `${entry.providerID}/${entry.id} (${entry.reason})`)
       .join(", ")
-    lines.push(`blocked  ${info.blocked.length} · ${blocked}`)
+    sessions.push(["blocked", `${info.blocked.length} · ${blocked}`])
   }
-  const pool = config.pool ?? {}
-  lines.push(
-    `settings enabled=${config.enabled} policy=${config.policy} pool=${pool.source}(${pool.models}) pin=${config.pin?.mode} optimiser=${config.optimiser?.enabled ? "on" : "off"} subagents=${config.subagents?.enabled ? "on" : "off"} debug=${config.debug ? "on" : "off"}`,
-  )
-  if (info.statusError) lines.push(`warning  ${info.statusError}`)
-  return lines.join("\n")
+  blocks.push(section("sessions", sessions))
+  if (info.lastDecision) {
+    const record = info.lastDecision
+    const timing = record.timing ?? {}
+    blocks.push(
+      section("last", [
+        ["model", record.chosen ?? "unknown"],
+        ["stage", [record.stage, record.pinned ? "pinned" : ""].filter(Boolean).join(" · ")],
+        [
+          "timing",
+          `judge ${formatMilliseconds(timing.judgeMs ?? record.judge?.ms ?? 0)} · route ${formatMilliseconds(timing.routeMs ?? 0)}`,
+        ],
+      ]),
+    )
+  }
+  if (info.timing?.count) {
+    const average = info.timing.averages
+    blocks.push(
+      section("timing", [
+        ["judge", formatMilliseconds(average.judgeMs)],
+        ["remote", formatMilliseconds(average.modelMs)],
+        ["turn", `${formatMilliseconds(average.turnMs)} (last ${info.timing.count})`],
+      ]),
+    )
+  }
+  if (info.statusError) blocks.push(facts([["warning", info.statusError]]))
+  return join(...blocks)
 }
 
-function qualityLine(quality) {
-  if (!quality) return "unknown"
-  if (quality.source === "manual") return "manual overrides"
-  if (!quality.cache) return `${quality.source} · cache empty; run /router quality refresh`
-  const parts = Object.entries(quality.cache.sources ?? {}).map(
-    ([name, entry]) => `${name} ${entry.count}`,
-  )
-  const minutes = Math.floor((Number(quality.cache.ageMs) || 0) / 60_000)
-  const age = minutes < 60 ? `${minutes}m` : `${Math.floor(minutes / 60)}h`
-  return `${quality.source} · ${parts.join(" + ") || `${quality.cache.count} models`} · ${age} old`
+function qualityRows(quality) {
+  if (!quality) return [["source", "unknown"]]
+  if (quality.source === "manual") return [["source", "manual overrides"]]
+  if (!quality.cache) {
+    return [
+      ["source", quality.source],
+      ["cache", "empty · run /router quality refresh"],
+    ]
+  }
+  const rows = [["source", quality.source]]
+  for (const [name, entry] of Object.entries(quality.cache.sources ?? {})) {
+    rows.push([name, `${entry.count} models · ${shortAge(entry.ageMs)} old`])
+  }
+  rows.push(["models", String(quality.cache.count)])
+  return rows
+}
+
+function shortAge(ms) {
+  const minutes = Math.floor((Number(ms) || 0) / 60_000)
+  return minutes < 60 ? `${minutes}m` : `${Math.floor(minutes / 60)}h`
 }
 
 function judgeLine(judge) {
