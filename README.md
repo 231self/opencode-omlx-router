@@ -15,7 +15,7 @@ a model that will fail it.
 
 </div>
 
-> **Status: v0.2.5.** Routing, the context optimiser, subagent policy, the TUI
+> **Status: v0.2.6.** Routing, the context optimiser, subagent policy, the TUI
 > `/router` surface, per-turn timing, the CLI, and the Kilo shim are implemented
 > and tested. Design of record:
 > [`docs/specs/2026-11-15-opencode-omlx-router-design.md`](docs/specs/2026-11-15-opencode-omlx-router-design.md).
