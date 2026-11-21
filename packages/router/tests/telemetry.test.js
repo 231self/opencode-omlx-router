@@ -3,7 +3,7 @@ import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 
-import { readTurns, summariseTurns } from "../src/state.js"
+import { readTurns, summariseTurns } from "@231self/opencode-shared/state.js"
 import { Telemetry } from "../src/telemetry.js"
 
 function tempEnv() {

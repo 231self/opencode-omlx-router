@@ -5,6 +5,7 @@ cd "$(dirname "$0")/.."
 # One entry per crate: "<manifest-dir> <package-dist-dir> <crate-wasm-name>".
 CRATES=(
   "packages/router/core packages/router/dist omlx_router_core"
+  "packages/compaction/core packages/compaction/dist omlx_compaction_core"
 )
 
 for entry in "${CRATES[@]}"; do

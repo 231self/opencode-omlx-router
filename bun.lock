@@ -5,9 +5,12 @@
     "": {
       "name": "opencode-router-workspace",
     },
-    "packages/econ": {
-      "name": "@231self/opencode-econ",
+    "packages/compaction": {
+      "name": "@231self/opencode-compaction",
       "version": "0.1.0",
+      "dependencies": {
+        "@231self/opencode-shared": "^0.1.0",
+      },
     },
     "packages/router": {
       "name": "@231self/opencode-router",
@@ -17,13 +20,19 @@
         "omlx-router": "bin/omlx-router.mjs",
       },
       "dependencies": {
-        "@231self/opencode-econ": "^0.1.0",
+        "@231self/opencode-shared": "^0.1.0",
       },
+    },
+    "packages/shared": {
+      "name": "@231self/opencode-shared",
+      "version": "0.1.0",
     },
   },
   "packages": {
-    "@231self/opencode-econ": ["@231self/opencode-econ@workspace:packages/econ"],
+    "@231self/opencode-compaction": ["@231self/opencode-compaction@workspace:packages/compaction"],
 
     "@231self/opencode-router": ["@231self/opencode-router@workspace:packages/router"],
+
+    "@231self/opencode-shared": ["@231self/opencode-shared@workspace:packages/shared"],
   }
 }

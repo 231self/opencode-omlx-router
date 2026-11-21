@@ -14,18 +14,13 @@ const decoder = new TextDecoder()
 export const MAX_REQUEST_BYTES = 1024 * 1024
 export const MAX_RESULT_BYTES = 1024 * 1024
 
-function trapResult(name, error) {
-  const reason = "core_trap"
-  const message = String(error?.message ?? error)
-  return name === "optimise"
-    ? {
-        abi: 0,
-        plan: [],
-        stats: { beforeTokens: 0, afterTokens: 0, partsPruned: 0, overflow: false },
-        reason,
-        error: message,
-      }
-    : { abi: 0, action: "skip", reason, error: message }
+function trapResult(_name, error) {
+  return {
+    abi: 0,
+    action: "skip",
+    reason: "core_trap",
+    error: String(error?.message ?? error),
+  }
 }
 
 /**
@@ -78,7 +73,7 @@ export class CoreError extends Error {
 }
 
 /**
- * Load `dist/core.wasm` and expose route/optimise calls.
+ * Load `dist/core.wasm` and expose the route call.
  *
  * The module has no imports; requests are JSON strings copied through the
  * exported alloc/result buffers. Every call returns plain JSON.
@@ -99,7 +94,7 @@ export async function loadCore({ wasmPath = DEFAULT_WASM_PATH } = {}) {
   }
 
   const api = instance.exports
-  for (const name of ["abi_version", "alloc", "dealloc", "result_len", "route", "optimise"]) {
+  for (const name of ["abi_version", "alloc", "dealloc", "result_len", "route"]) {
     if (typeof api[name] !== "function") throw new CoreError(`core.wasm missing export ${name}`)
   }
   if (!(api.memory instanceof WebAssembly.Memory)) throw new CoreError("core.wasm missing memory export")
@@ -115,6 +110,5 @@ export async function loadCore({ wasmPath = DEFAULT_WASM_PATH } = {}) {
     abi,
     path: wasmPath,
     route: (input) => call("route", input),
-    optimise: (input) => call("optimise", input),
   }
 }

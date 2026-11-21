@@ -1,9 +1,8 @@
-import { readConfig } from "./config.js"
+import { readConfig } from "@231self/opencode-shared/config.js"
 import { Judge, readJudgeNoise } from "./judge.js"
 import { resolvePool } from "./pool.js"
 import { loadPricing } from "./pricing.js"
 import { loadQualityScores } from "./quality.js"
-import { applyPlan, buildOptimiseRequest } from "./optimiser.js"
 import {
   appendDecision,
   clearPin,
@@ -14,33 +13,12 @@ import {
   sessionHash,
   writePin,
   writeStats,
-} from "./state.js"
-import { cacheHitShare, countContextTokens, estimateTokens, measureSessionContext } from "@231self/opencode-econ/tokens.js"
+} from "@231self/opencode-shared/state.js"
+import { cacheHitShare, countContextTokens, estimateTokens, measureSessionContext } from "@231self/opencode-shared/tokens.js"
 
-export function refOf(model) {
-  if (!model) return null
-  const id = model.id ?? model.modelID
-  if (!id || !model.providerID) return null
-  return { providerID: model.providerID, id, variant: model.variant ?? "default" }
-}
+import { decisionRef, refOf, sameModel, sameModelAndVariant } from "@231self/opencode-shared/refs.js"
 
-function sameModel(left, right) {
-  if (!left || !right) return false
-  return left.providerID === right.providerID && left.id === right.id
-}
-
-function sameModelAndVariant(left, right) {
-  if (!sameModel(left, right)) return false
-  return (left.variant ?? "default") === (right.variant ?? "default")
-}
-
-function decisionRef(decision) {
-  return {
-    providerID: decision.providerID,
-    id: decision.id,
-    variant: decision.variant ?? "default",
-  }
-}
+export { refOf }
 
 function label(reference) {
   if (!reference) return "unknown"
@@ -263,23 +241,6 @@ export class Router {
     const value = { models, providers }
     this.catalogCache = { at: now, value }
     return value
-  }
-
-  /**
-   * The V2 context hook reports only provider/id, not limits or prices. Fill in
-   * the catalog entry so the optimiser sees the real context budget instead of
-   * treating every turn as an overflow.
-   */
-  async modelFor(contextModel) {
-    if (!contextModel) return null
-    if (Number(contextModel.limit?.context) > 0) return contextModel
-    const { models } = await this.catalog()
-    const found = models.find(
-      (model) =>
-        String(model?.providerID) === String(contextModel.providerID) &&
-        String(model?.id ?? model?.modelID) === String(contextModel.id),
-    )
-    return found ? { ...found, providerID: found.providerID, id: found.id ?? found.modelID } : contextModel
   }
 
   qualityScores(config) {
@@ -721,74 +682,6 @@ export class Router {
       appendDecision(this.host, record, this.env)
     } catch (error) {
       if (config?.debug) console.error("[omlx-router] cannot write decision:", String(error?.message ?? error))
-    }
-  }
-
-  /** Apply the optimiser to a message list without session state (Kilo transform). */
-  contextMessages({ model, messages, system = [] }) {
-    try {
-      const config = this.config()
-      if (config.optimiser?.enabled === false || !this.core?.optimise || !model) return null
-      const request = buildOptimiseRequest({ model, config, system, messages })
-      const result = this.core.optimise(request)
-      if (!result?.stats || result.stats.overflow) return result?.stats ?? null
-      applyPlan(messages, result.plan)
-      return result.stats
-    } catch {
-      return null
-    }
-  }
-
-  async context(event) {
-    try {
-      const sessionID = event?.sessionID
-      if (!sessionID) return
-      const config = this.config()
-      const model = await this.modelFor(event?.model)
-      let tokens = null
-      let optimiser = null
-      let overflow = false
-
-      if (config.optimiser?.enabled !== false && this.core?.optimise && model) {
-        const request = buildOptimiseRequest({
-          model,
-          config,
-          system: event.system,
-          messages: event.messages,
-        })
-        const result = this.core.optimise(request)
-        if (result?.stats) {
-          optimiser = result.stats
-          if (result.stats.overflow) {
-            overflow = true
-            tokens = Number(result.stats.beforeTokens) || 0
-          } else {
-            applyPlan(event.messages, result.plan)
-            tokens = Number(result.stats.afterTokens) || 0
-          }
-        }
-      }
-
-      if (tokens == null) tokens = countContextTokens(event)
-      const latest = readPin(this.host, sessionID, this.env) ?? {}
-      const target = refOf(model)
-      // A newer prompt may have chosen a different model while this hook was
-      // measuring. Never overwrite that decision with stale context state.
-      if (latest.model && target && !sameModel(latest.model, target)) return
-      if (overflow) clearPin(this.host, sessionID, this.env)
-      writePin(
-        this.host,
-        sessionID,
-        {
-          ...latest,
-          ...(overflow ? { model: undefined, forced: false, redirect: null } : {}),
-          lastContextTokens: tokens,
-          lastOptimiser: optimiser,
-        },
-        this.env,
-      )
-    } catch {
-      // A failed measurement or prune must never break a turn.
     }
   }
 

@@ -1,8 +1,8 @@
 import fs from "node:fs"
 import path from "node:path"
 
-import { resolveSecret } from "./config.js"
-import { stateRoot, writeJsonAtomic } from "./state.js"
+import { resolveSecret } from "@231self/opencode-shared/config.js"
+import { stateRoot, writeJsonAtomic } from "@231self/opencode-shared/state.js"
 
 export class JudgeError extends Error {
   constructor(message) {

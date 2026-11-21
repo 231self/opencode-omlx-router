@@ -4,7 +4,7 @@ import os from "node:os"
 import path from "node:path"
 
 import plugin from "../src/index.js"
-import { readDecisions } from "../src/state.js"
+import { readDecisions } from "@231self/opencode-shared/state.js"
 
 const MODELS = [
   {
@@ -108,15 +108,6 @@ test("kilo shim routes at the boundary through the SDK transport", async () => {
   expect(decisions.length).toBe(1)
   expect(decisions[0].applied).toBe("boundary")
   expect(decisions[0].chosen).toBe("deepseek/deepseek-flash")
-})
-
-test("kilo transform is a safe no-op without an assistant model", async () => {
-  const env = environment()
-  Object.assign(process.env, env)
-  const { client } = fakeClient()
-  const hooks = await plugin.server({ client })
-  await hooks["experimental.chat.messages.transform"]({}, { messages: [{ info: { role: "user" }, parts: [] }] })
-  expect(true).toBe(true)
 })
 
 test("kilo title sessions are ignored", async () => {

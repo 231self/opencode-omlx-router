@@ -1,7 +1,7 @@
 import fs from "node:fs"
 import path from "node:path"
 
-import { stateRoot, writeJsonAtomic } from "./state.js"
+import { stateRoot, writeJsonAtomic } from "@231self/opencode-shared/state.js"
 
 const DATASETS_SERVER = "https://datasets-server.huggingface.co/rows"
 const DEFAULT_DATASET = "lmarena-ai/leaderboard-dataset"

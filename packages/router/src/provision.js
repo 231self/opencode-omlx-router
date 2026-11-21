@@ -2,7 +2,7 @@ import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 
-import { resolveSecret } from "./config.js"
+import { resolveSecret } from "@231self/opencode-shared/config.js"
 import { facts, join, prose } from "./format.js"
 import { paramBillions } from "./judge.js"
 

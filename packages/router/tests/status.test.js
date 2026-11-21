@@ -3,7 +3,7 @@ import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 
-import { appendDecision, appendTurn, writePin } from "../src/state.js"
+import { appendDecision, appendTurn, writePin } from "@231self/opencode-shared/state.js"
 import { buildStatus, formatStatus, formatTiming, formatTuiStatus } from "../src/status.js"
 
 function tempEnv() {

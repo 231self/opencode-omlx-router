@@ -10,7 +10,7 @@
     "build": "bash scripts/build-wasm.sh",
     "build:wasm": "bash scripts/build-wasm.sh",
     "test": "bun run build:wasm && bun test",
-    "test:rust": "cargo test --manifest-path packages/router/core/Cargo.toml",
+    "test:rust": "cargo test --manifest-path packages/router/core/Cargo.toml && cargo test --manifest-path packages/compaction/core/Cargo.toml",
     "check": "bash scripts/check.sh",
     "security": "node scripts/security-check.mjs",
     "test:e2e": "bun packages/router/tests/e2e/run.mjs",

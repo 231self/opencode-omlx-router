@@ -4,7 +4,7 @@ import os from "node:os"
 import path from "node:path"
 
 import { measuredJudgeLatency, rescoreScenario } from "./benchmark.mjs"
-import { appendDecision, appendTurn, sessionHash } from "../src/state.js"
+import { appendDecision, appendTurn, sessionHash } from "@231self/opencode-shared/state.js"
 
 const SUITE = { turns: 3, tokensAt: (turn) => 1000 * turn }
 

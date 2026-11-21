@@ -44,7 +44,7 @@
     "wasm"
   ],
   "dependencies": {
-    "@231self/opencode-econ": "^0.1.0"
+    "@231self/opencode-shared": "^0.1.0"
   },
   "scripts": {
     "build": "bun run build:wasm",

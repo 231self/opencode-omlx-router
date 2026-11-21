@@ -4,10 +4,10 @@ import os from "node:os"
 import path from "node:path"
 
 import tui from "../src/tui.js"
-import { readConfig, saveConfig } from "../src/config.js"
+import { readConfig, saveConfig } from "@231self/opencode-shared/config.js"
 import { writeQualityCache } from "../src/quality.js"
 import { writePricingCache } from "../src/pricing.js"
-import { appendDecision, appendTurn, listPins, sessionHash, writePin } from "../src/state.js"
+import { appendDecision, appendTurn, listPins, sessionHash, writePin } from "@231self/opencode-shared/state.js"
 
 function environment() {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "omlx-router-tui-"))

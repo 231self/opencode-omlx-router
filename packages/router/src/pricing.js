@@ -1,9 +1,9 @@
 import fs from "node:fs"
 import path from "node:path"
 
-import { normaliseCost } from "@231self/opencode-econ/cost.js"
+import { normaliseCost } from "@231self/opencode-shared/cost.js"
 import { normalizeModelName } from "./quality.js"
-import { stateRoot, writeJsonAtomic } from "./state.js"
+import { stateRoot, writeJsonAtomic } from "@231self/opencode-shared/state.js"
 
 /**
  * Public price tables. None of these need an access token:

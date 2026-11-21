@@ -1,10 +1,10 @@
 import os from "node:os"
 
-import { readConfig } from "./config.js"
+import { readConfig } from "@231self/opencode-shared/config.js"
 import { facts, join, section } from "./format.js"
 import { judgeAvailability } from "./provision.js"
 import { qualityCacheAgeMs, qualitySource, readQualityCache } from "./quality.js"
-import { readDecisions, readTurns, summariseTurns } from "./state.js"
+import { readDecisions, readTurns, summariseTurns } from "@231self/opencode-shared/state.js"
 import { buildStatus, formatMilliseconds, modelLabel } from "./status.js"
 import { ABI_VERSION, VERSION } from "./version.js"
 

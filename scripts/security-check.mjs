@@ -44,8 +44,12 @@ const FORBIDDEN_NAMES = [/^auth\.json$/i, /^secrets?/i, /^id_rsa/i, /^\.env/i, /
  */
 const PACKAGES = [
   {
-    dir: "packages/econ",
+    dir: "packages/shared",
     allowedRoots: ["package.json", "README.md", "CHANGELOG.md", "LICENSE", "src"],
+  },
+  {
+    dir: "packages/compaction",
+    allowedRoots: ["package.json", "README.md", "CHANGELOG.md", "LICENSE", "src", "dist"],
   },
   {
     dir: "packages/router",

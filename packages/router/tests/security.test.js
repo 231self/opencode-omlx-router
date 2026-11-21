@@ -34,7 +34,7 @@ test("ordinary source text is clean", () => {
 })
 
 test("workspace siblings are the only allowed dependencies", () => {
-  expect(checkDependencies({ dependencies: { "@231self/opencode-econ": "^0.1.0" } })).toEqual([])
+  expect(checkDependencies({ dependencies: { "@231self/opencode-shared": "^0.1.0" } })).toEqual([])
   expect(checkDependencies({ dependencies: { "left-pad": "^1.3.0" } })).toEqual(["dependencies: left-pad"])
   expect(checkDependencies({ devDependencies: { vitest: "1.0.0" }, peerDependencies: { react: "18" } })).toEqual([
     "devDependencies: vitest",

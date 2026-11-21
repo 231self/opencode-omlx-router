@@ -1,4 +1,4 @@
-import { appendTurn, sessionHash } from "./state.js"
+import { appendTurn, sessionHash } from "@231self/opencode-shared/state.js"
 
 export const TELEMETRY_EVENTS = [
   "session.execution.started",

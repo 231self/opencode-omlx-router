@@ -1,6 +1,6 @@
 import os from "node:os"
 
-import { readConfig } from "./config.js"
+import { readConfig } from "@231self/opencode-shared/config.js"
 import { facts, join, plural, section } from "./format.js"
 import {
   hostStateDir,
@@ -9,7 +9,7 @@ import {
   readStats,
   readTurns,
   summariseTurns,
-} from "./state.js"
+} from "@231self/opencode-shared/state.js"
 import { VERSION } from "./version.js"
 
 /**

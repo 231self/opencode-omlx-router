@@ -16,7 +16,7 @@
  *   bun tests/routing-eval.mjs --json
  */
 
-import { DEFAULT_CONFIG, mergeConfig } from "../src/config.js"
+import { DEFAULT_CONFIG, mergeConfig } from "@231self/opencode-shared/config.js"
 import { Judge } from "../src/judge.js"
 import { loadCore } from "../src/wasm.js"
 import { FLASH, PRO } from "./e2e/scenarios.mjs"

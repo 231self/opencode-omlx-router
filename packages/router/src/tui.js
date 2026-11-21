@@ -1,4 +1,4 @@
-import { configPath, formatWeights, readConfig, resolvePolicyWeights, saveConfig } from "./config.js"
+import { configPath, formatWeights, readConfig, resolvePolicyWeights, saveConfig } from "@231self/opencode-shared/config.js"
 import { facts, join, note, plural, prose, section } from "./format.js"
 import { Judge } from "./judge.js"
 import {
@@ -28,7 +28,7 @@ import {
   sessionHash,
   summariseTurns,
   writePin,
-} from "./state.js"
+} from "@231self/opencode-shared/state.js"
 import {
   buildStatus,
   formatMilliseconds,

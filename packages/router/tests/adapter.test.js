@@ -34,7 +34,6 @@ test("setup registers session hooks and cleans up", async () => {
   const dispose = await plugin.setup(ctx)
   expect([...hooks.keys()].sort()).toEqual([
     "compaction",
-    "context",
     "experimental.model.resolve",
     "prompt",
     "retry",

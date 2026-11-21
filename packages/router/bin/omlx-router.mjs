@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { createInterface } from "node:readline/promises"
 
-import { configPath, getConfigValue, readConfig, saveConfig, setConfigValue } from "../src/config.js"
+import { configPath, getConfigValue, readConfig, saveConfig, setConfigValue } from "@231self/opencode-shared/config.js"
 import { Judge } from "../src/judge.js"
 import {
   Provisioner,
@@ -21,7 +21,7 @@ import {
   refreshQuality,
 } from "../src/quality.js"
 import { buildStatus, formatMilliseconds, formatStatus, formatTiming } from "../src/status.js"
-import { clearPins, listPins, readDecisions, readTurns, summariseTurns } from "../src/state.js"
+import { clearPins, listPins, readDecisions, readTurns, summariseTurns } from "@231self/opencode-shared/state.js"
 import { ABI_VERSION, VERSION } from "../src/version.js"
 import { loadCore } from "../src/wasm.js"
 import { collectDebug, formatDebug } from "../src/debug.js"

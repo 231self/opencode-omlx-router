@@ -28,10 +28,10 @@ import path from "node:path"
 
 import os from "node:os"
 
-import { modelledTurnCost } from "@231self/opencode-econ/cost.js"
-import { DEFAULT_CONFIG, mergeConfig } from "../src/config.js"
+import { modelledTurnCost } from "@231self/opencode-shared/cost.js"
+import { DEFAULT_CONFIG, mergeConfig } from "@231self/opencode-shared/config.js"
 import { readJudgeNoise } from "../src/judge.js"
-import { readDecisions, readTurns } from "../src/state.js"
+import { readDecisions, readTurns } from "@231self/opencode-shared/state.js"
 import { loadCore } from "../src/wasm.js"
 
 const OUTPUT_TOKENS = 800

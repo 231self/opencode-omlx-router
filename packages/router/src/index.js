@@ -1,7 +1,7 @@
-import { readConfig } from "./config.js"
-import { normaliseCost } from "@231self/opencode-econ/cost.js"
+import { readConfig } from "@231self/opencode-shared/config.js"
+import { createKiloContext } from "@231self/opencode-shared/kilo.js"
 import { VERSION } from "./version.js"
-import { Router, refOf } from "./router.js"
+import { Router } from "./router.js"
 import { refreshPricingIfStale } from "./pricing.js"
 import { refreshQualityIfStale } from "./quality.js"
 import { TELEMETRY_EVENTS, Telemetry } from "./telemetry.js"
@@ -58,7 +58,6 @@ export default {
       }
     })
     await register("prompt", (event) => router.prompt(event))
-    await register("context", (event) => router.context(event))
     await register("compaction", (event) => router.compaction(event))
     await register("retry", (event) => router.retry(event))
     await register("experimental.model.resolve", (event) => router.resolveModel(event))
@@ -114,125 +113,10 @@ export default {
       if (config.debug) console.error("[omlx-router] kilo core unavailable:", String(cause?.message ?? cause))
       return {}
     }
-    const api = input?.client?.session?._client
-    if (!api) return {}
-
-    const call = async (method, url, path, body) => {
-      const response = await api[method]({ url, ...(path ? { path } : {}), ...(body ? { body } : {}) })
-      if (response?.error) {
-        throw new Error(typeof response.error === "string" ? response.error : JSON.stringify(response.error))
-      }
-      return response?.data
-    }
-
-    const readProviders = async () => {
-      try {
-        if (!input?.client?.config?.providers) return []
-        const result = await input.client.config.providers()
-        const body = result?.data ?? result
-        return Array.isArray(body?.providers) ? body.providers : []
-      } catch (cause) {
-        if (config.debug) console.error("[omlx-router] kilo providers failed:", String(cause?.message ?? cause))
-        return []
-      }
-    }
-
-    const normalizeModel = (model, provider) => {
-      const capabilities = model?.capabilities ?? {}
-      const inputSet = capabilities.input
-      const outputSet = capabilities.output
-      const input = Array.isArray(inputSet)
-        ? inputSet
-        : Object.entries(inputSet ?? {})
-            .filter(([, enabled]) => enabled === true)
-            .map(([kind]) => kind)
-      const output = Array.isArray(outputSet)
-        ? outputSet
-        : Object.entries(outputSet ?? {})
-            .filter(([, enabled]) => enabled === true)
-            .map(([kind]) => kind)
-      const cost = normaliseCost(model?.cost)
-      const variants = Array.isArray(model?.variants)
-        ? model.variants
-        : Object.keys(model?.variants ?? {}).map((id) => ({ id }))
-      return {
-        ...model,
-        providerID: provider.id,
-        type: "chat",
-        api: model.api ?? provider.api,
-        capabilities: {
-          tools: Boolean(capabilities.tools ?? capabilities.toolcall),
-          input,
-          output,
-        },
-        cost,
-        variants,
-      }
-    }
-
-    const ctx = {
-      session: {
-        get: async ({ sessionID }) => {
-          const body = await call("get", "/api/session/{sessionID}", { sessionID })
-          return body?.data ?? body
-        },
-        switchModel: async ({ sessionID, model }) => {
-          await call("post", "/api/session/{sessionID}/model", { sessionID }, { model })
-        },
-      },
-      model: {
-        list: async () => {
-          const providers = await readProviders()
-          const models = []
-          for (const provider of providers) {
-            for (const model of Object.values(provider?.models ?? {})) {
-              if (!model || typeof model !== "object") continue
-              models.push(normalizeModel(model, provider))
-            }
-          }
-          if (models.length === 0) {
-            const body = await call("get", "/api/model")
-            const fallback = body?.data ?? []
-            if (config.debug) console.log("[omlx-router] kilo models fallback", fallback.length)
-            return fallback
-          }
-          if (config.debug) {
-            const sample = models
-              .filter((model) => String(model.providerID).includes("deepseek") || String(model.id).includes("deepseek"))
-              .map((model) => `${model.providerID}/${model.id}`)
-              .slice(0, 5)
-            console.log("[omlx-router] kilo models", models.length, sample)
-          }
-          return models
-        },
-      },
-      provider: {
-        list: async () => {
-          const providers = await readProviders()
-          return providers.map((provider) => ({
-            id: provider.id,
-            settings: { baseURL: provider?.api?.url },
-            api: provider.api,
-          }))
-        },
-      },
-      agent: {
-        get: async ({ agentID }) => {
-          const body = await call("get", "/api/agent")
-          return (body?.data ?? []).find((agent) => agent?.id === agentID)
-        },
-      },
-    }
+    const ctx = createKiloContext(input, config)
+    if (!ctx) return {}
 
     const router = new Router({ ctx, host: "kilo", core, appliedMode: "boundary" })
-
-    const assistantModel = (messages) => {
-      for (let index = (messages?.length ?? 0) - 1; index >= 0; index -= 1) {
-        const info = messages[index]?.info
-        if (info?.role === "assistant" && info?.model?.providerID) return refOf(info.model)
-      }
-      return null
-    }
 
     return {
       "chat.message": async (event, output) => {
@@ -243,20 +127,6 @@ export default {
           .map((part) => part.text ?? "")
           .join("\n")
         await router.prompt({ sessionID, prompt: { text, files: [] } })
-      },
-
-      "experimental.chat.messages.transform": async (_hook, output) => {
-        try {
-          const reference = assistantModel(output?.messages)
-          if (!reference) return
-          const models = await ctx.model.list()
-          const found = models.find(
-            (model) => model.providerID === reference.providerID && (model.id ?? model.modelID) === reference.id,
-          )
-          if (found) router.contextMessages({ model: found, messages: output.messages })
-        } catch {
-          // Transform is best-effort in Kilo.
-        }
       },
 
       "tool.execute.after": async (hookInput, hookOutput) => {

@@ -21,17 +21,6 @@ test("route rejects ABI mismatch", async () => {
   expect(result.reason).toBe("abi_mismatch")
 })
 
-test("optimise returns an empty plan inside budget", async () => {
-  const core = await loadCore()
-  const result = core.optimise({
-    abi: 1,
-    model: { limit: { context: 100000, output: 8192 } },
-    messages: [],
-  })
-  expect(result.plan).toEqual([])
-  expect(result.stats.overflow).toBe(false)
-})
-
 test("repeated calls do not corrupt results", async () => {
   const core = await loadCore()
   for (let index = 0; index < 50; index += 1) {
@@ -47,7 +36,6 @@ function fakeApi(overrides = {}) {
     dealloc: () => {},
     result_len: () => 0,
     route: () => 1,
-    optimise: () => 1,
     ...overrides,
   }
 }
@@ -68,18 +56,6 @@ test("a core trap degrades to skip instead of breaking the turn", () => {
   expect(result.action).toBe("skip")
   expect(result.reason).toBe("core_trap")
   expect(result.error).toContain("unreachable")
-})
-
-test("a trap during optimise degrades to an empty plan", () => {
-  const api = fakeApi({
-    optimise: () => {
-      throw new WebAssembly.RuntimeError("out of bounds")
-    },
-  })
-  const result = callApi(api, "optimise", { abi: 1 })
-  expect(result.plan).toEqual([])
-  expect(result.stats.overflow).toBe(false)
-  expect(result.reason).toBe("core_trap")
 })
 
 test("an oversized result is refused", () => {

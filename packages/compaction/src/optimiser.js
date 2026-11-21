@@ -1,4 +1,4 @@
-import { estimateTokens, partTokens } from "@231self/opencode-econ/tokens.js"
+import { estimateTokens, partTokens } from "@231self/opencode-shared/tokens.js"
 
 function systemTokens(system) {
   return (system ?? []).reduce((total, part) => total + partTokens(part), 0)

@@ -3,7 +3,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 # One entry per Rust crate; keep in sync with scripts/build-wasm.sh.
-CRATES=(packages/router/core)
+CRATES=(packages/router/core packages/compaction/core)
 
 for crate in "${CRATES[@]}"; do
   cargo fmt --manifest-path "$crate/Cargo.toml" -- --check

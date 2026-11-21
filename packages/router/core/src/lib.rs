@@ -12,8 +12,10 @@
 //! dealloc(ptr, len)
 //! result_len() -> u32
 //! route(ptr, len) -> ptr
-//! optimise(ptr, len) -> ptr
 //! ```
+//!
+//! The `optimise` entry moved to the `omlx_compaction_core` crate
+//! (`packages/compaction/core`).
 
 // `unsafe` is confined to the C ABI boundary below. Keep it that way: every
 // other line of this crate must stay safe.
@@ -26,7 +28,6 @@ use serde_json::{json, Value};
 
 mod envelope;
 mod judge;
-mod optimise;
 mod pin;
 mod route;
 mod score;
@@ -130,56 +131,12 @@ pub unsafe extern "C" fn route(ptr: *const u8, len: usize) -> *const u8 {
     store(handle_route(request))
 }
 
-/// Plan the context optimiser for one request.
-///
-/// # Safety
-///
-/// `ptr`/`len` must describe a readable buffer in this module's memory.
-#[allow(unsafe_code)]
-#[no_mangle]
-pub unsafe extern "C" fn optimise(ptr: *const u8, len: usize) -> *const u8 {
-    if len > MAX_REQUEST_BYTES {
-        return store(empty_plan("too_large"));
-    }
-    let request = match read_request(ptr, len) {
-        Some(value) => value,
-        None => {
-            return store(json!({
-                "abi": ABI_VERSION,
-                "plan": [],
-                "stats": {
-                    "beforeTokens": 0,
-                    "afterTokens": 0,
-                    "partsPruned": 0,
-                    "overflow": false,
-                },
-                "reason": "invalid_input",
-            }))
-        }
-    };
-    store(handle_optimise(request))
-}
-
 fn request_abi(value: &Value) -> Option<u64> {
     value.get("abi").and_then(Value::as_u64)
 }
 
 fn skip(reason: &str) -> Value {
     json!({ "abi": ABI_VERSION, "action": "skip", "reason": reason })
-}
-
-fn empty_plan(reason: &str) -> Value {
-    json!({
-        "abi": ABI_VERSION,
-        "plan": [],
-        "stats": {
-            "beforeTokens": 0,
-            "afterTokens": 0,
-            "partsPruned": 0,
-            "overflow": false,
-        },
-        "reason": reason,
-    })
 }
 
 /// Structural caps: a request that would cost more than its worth is refused
@@ -222,24 +179,6 @@ fn handle_route(request: Value) -> Value {
     }
 }
 
-fn handle_optimise(request: Value) -> Value {
-    if request_abi(&request) != Some(u64::from(ABI_VERSION)) {
-        return empty_plan("abi_mismatch");
-    }
-    if oversized(&request) {
-        return empty_plan("too_large");
-    }
-
-    match serde_json::from_value::<types::OptimiseRequest>(request) {
-        Ok(parsed) => optimise::handle(parsed),
-        Err(error) => {
-            let mut value = empty_plan("invalid_input");
-            value["error"] = json!(error.to_string());
-            value
-        }
-    }
-}
-
 #[cfg(test)]
 #[allow(unsafe_code)]
 mod tests {
@@ -258,25 +197,6 @@ mod tests {
             std::ptr::copy_nonoverlapping(input.as_ptr(), ptr, input.len());
         }
         let out = unsafe { route(ptr, input.len()) };
-        let len = result_len();
-        let value = unsafe {
-            let bytes = slice::from_raw_parts(out, len);
-            serde_json::from_slice(bytes).expect("result is JSON")
-        };
-        unsafe { dealloc(ptr, input.len()) };
-        value
-    }
-
-    fn call_optimise(input: &str) -> Value {
-        let _guard = TEST_LOCK
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
-        let ptr = alloc(input.len());
-        assert!(!ptr.is_null());
-        unsafe {
-            std::ptr::copy_nonoverlapping(input.as_ptr(), ptr, input.len());
-        }
-        let out = unsafe { optimise(ptr, input.len()) };
         let len = result_len();
         let value = unsafe {
             let bytes = slice::from_raw_parts(out, len);
@@ -355,16 +275,6 @@ mod tests {
     }
 
     #[test]
-    fn optimise_is_empty_plan() {
-        let value = call_optimise(
-            r#"{"abi":1,"messages":[],"model":{"limit":{"context":100000,"output":8192}}}"#,
-        );
-        assert_eq!(value["abi"], 1);
-        assert_eq!(value["plan"].as_array().map(Vec::len), Some(0));
-        assert_eq!(value["stats"]["overflow"], false);
-    }
-
-    #[test]
     fn result_len_tracks_last_result() {
         let _ = call_route(r#"{"abi":1}"#);
         let len = result_len();
@@ -386,18 +296,5 @@ mod tests {
         );
         let value = call_route(&input);
         assert_eq!(value["reason"], "too_large");
-    }
-
-    #[test]
-    fn oversized_transcripts_are_refused() {
-        let part = r#"{"index":0,"type":"text","tokens":4}"#;
-        let message = format!(r#"{{"index":0,"role":"assistant","parts":[{part}]}}"#);
-        let messages = vec![message; 6_000].join(",");
-        let input = format!(
-            r#"{{"abi":1,"messages":[{messages}],"model":{{"limit":{{"context":100000,"output":8192}}}}}}"#
-        );
-        let value = call_optimise(&input);
-        assert_eq!(value["reason"], "too_large");
-        assert_eq!(value["plan"].as_array().map(Vec::len), Some(0));
     }
 }

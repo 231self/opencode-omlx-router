@@ -3,10 +3,10 @@ import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 
-import { readConfig, saveConfig } from "../src/config.js"
+import { readConfig, saveConfig } from "@231self/opencode-shared/config.js"
 import { writeJudgeNoise } from "../src/judge.js"
 import { Router, cooldownFor, isFailoverError, isProviderWide } from "../src/router.js"
-import { appendDecision, appendTurn, readDecisions, readPin, sessionHash, writePin } from "../src/state.js"
+import { appendDecision, appendTurn, readDecisions, readPin, sessionHash, writePin } from "@231self/opencode-shared/state.js"
 
 const MODELS = [
   {
@@ -434,17 +434,6 @@ test("detects a user model override and forces the pin", async () => {
   expect(calls[0].pin.model.id).toBe("deepseek-v4-pro")
 })
 
-test("context hook stores the token estimate", async () => {
-  const env = tempEnv()
-  const { router } = harness({ env, sessionModel: null, core: { route: () => decisionResponse() } })
-  await router.context({
-    sessionID: "ses_1",
-    system: [{ type: "text", text: "system prompt" }],
-    messages: [{ parts: [{ type: "text", text: "hello world" }] }],
-  })
-  expect(readPin("opencode", "ses_1", env).lastContextTokens).toBeGreaterThan(0)
-})
-
 test("repeated tool failures surface on the next turn", async () => {
   const env = tempEnv()
   const calls = []
@@ -471,96 +460,6 @@ test("compaction clears the pin", async () => {
   writePin("opencode", "ses_1", { model: { providerID: "deepseek", id: "deepseek-flash" } }, env)
   router.compaction({ sessionID: "ses_1" })
   expect(readPin("opencode", "ses_1", env)).toBeUndefined()
-})
-
-test("context hook applies the optimiser plan and records the result", async () => {
-  const env = tempEnv()
-  const core = {
-    route: () => decisionResponse(),
-    optimise: () => ({
-      plan: [{ message: 0, part: 0, action: "stub", placeholder: "[pruned]" }],
-      stats: { beforeTokens: 9000, afterTokens: 20, partsPruned: 1, overflow: false },
-    }),
-  }
-  const { router } = harness({ env, sessionModel: null, core })
-  const messages = [{ info: { role: "assistant" }, parts: [{ type: "tool", tool: "read", state: { status: "completed", output: "huge output" } }] }]
-  await router.context({
-    sessionID: "ses_1",
-    model: { providerID: "deepseek", id: "deepseek-flash", limit: { context: 100000, output: 8192 } },
-    system: [],
-    messages,
-  })
-  expect(messages[0].parts[0].state.output).toBe("[pruned]")
-  const pin = readPin("opencode", "ses_1", env)
-  expect(pin.lastContextTokens).toBe(20)
-  expect(pin.lastOptimiser.overflow).toBe(false)
-})
-
-test("context overflow breaks the pin without pruning", async () => {
-  const env = tempEnv()
-  const core = {
-    route: () => decisionResponse(),
-    optimise: () => ({
-      plan: [],
-      stats: { beforeTokens: 500000, afterTokens: 500000, partsPruned: 0, overflow: true },
-    }),
-  }
-  const { router } = harness({ env, sessionModel: null, core })
-  writePin("opencode", "ses_1", { model: { providerID: "deepseek", id: "deepseek-flash" } }, env)
-  const messages = [{ parts: [] }]
-  await router.context({
-    sessionID: "ses_1",
-    model: { providerID: "deepseek", id: "deepseek-flash", limit: { context: 100000, output: 8192 } },
-    system: [],
-    messages,
-  })
-  const pin = readPin("opencode", "ses_1", env)
-  expect(pin.model).toBeUndefined()
-  expect(pin.lastContextTokens).toBe(500000)
-})
-
-test("context hook resolves catalog limits when the event model omits them", async () => {
-  const env = tempEnv()
-  const seen = []
-  const core = {
-    route: () => decisionResponse(),
-    optimise: (input) => {
-      seen.push(input.model)
-      return { plan: [], stats: { beforeTokens: 900, afterTokens: 900, partsPruned: 0, overflow: false } }
-    },
-  }
-  const { router } = harness({ env, sessionModel: null, core })
-  writePin("opencode", "ses_1", { model: { providerID: "deepseek", id: "deepseek-flash" } }, env)
-  await router.context({
-    sessionID: "ses_1",
-    model: { providerID: "deepseek", id: "deepseek-flash" },
-    system: [],
-    messages: [{ parts: [] }],
-  })
-  expect(seen[0].limit.context).toBe(262144)
-  expect(readPin("opencode", "ses_1", env).model.id).toBe("deepseek-flash")
-})
-
-test("a context write cannot clobber a newer routing pin", async () => {
-  const env = tempEnv()
-  const core = {
-    route: () => decisionResponse(),
-    optimise: () => {
-      // Simulate the prompt hook writing a new decision while the context hook
-      // is measuring (the two hooks are asynchronous in the host).
-      writePin("opencode", "ses_1", { model: { providerID: "deepseek", id: "deepseek-v4-pro", variant: "default" } }, env)
-      return { plan: [], stats: { beforeTokens: 100, afterTokens: 100, partsPruned: 0, overflow: false } }
-    },
-  }
-  const { router } = harness({ env, sessionModel: null, core })
-  writePin("opencode", "ses_1", { model: { providerID: "deepseek", id: "deepseek-flash" } }, env)
-  await router.context({
-    sessionID: "ses_1",
-    model: { providerID: "deepseek", id: "deepseek-flash", limit: { context: 262144, output: 8192 } },
-    system: [],
-    messages: [{ parts: [] }],
-  })
-  expect(readPin("opencode", "ses_1", env).model.id).toBe("deepseek-v4-pro")
 })
 
 test("a rejected switch is recorded as not applied and keeps the old pin", async () => {
