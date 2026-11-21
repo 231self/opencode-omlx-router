@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.2.6 — 2026-11-21
+## 0.2.7 — 2026-11-21
 
 ### Added
 
@@ -34,6 +34,8 @@
   the CLI, and a regression test sweeps every popup asserting no line runs
   past 80 columns and that rows in a section share one value column.
 - Model labels no longer show a `#default` variant suffix.
+
+## 0.2.6 — 2026-11-21
 
 ### Security
 
