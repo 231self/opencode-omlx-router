@@ -269,14 +269,15 @@ a systems/efficiency workshop or industry track.
 Each phase lands green (`bun run check` equivalents per package) with its own
 regression tests and release notes.
 
-1. **Monorepo restructure** — workspaces, code moves, crate split, all three
-   packages publishable, release.yml extended. Behaviour-preserving
-   except the documented ABI move.
+1. **Monorepo restructure** — workspaces, `packages/econ` extraction, the
+   crate split, and the package split. Includes the optimiser surface move:
+   the router stops invoking the optimiser and becomes pure model selection
+   (documented behaviour change alongside the ABI move). All three packages
+   publishable, release.yml extended.
 2. **Economics** — `contextDebt`, `compactionRoi`, recorded-session
    validation fixtures in `packages/econ`.
-3. **Compaction MVP** — optimiser surface move (the router stops invoking it),
-   hybrid trigger, calibration script and artifact, popup/toast, explicit
-   command.
+3. **Compaction MVP** — hybrid trigger, calibration script and artifact,
+   popup/toast, explicit command (the optimiser move landed in phase 1).
 4. **Context-debt routing** — the router's switch decision consumes
    `contextDebt` (projected next-turn cost at current vs compacted context).
 5. **Tolerance + paper** — per-pin compaction tolerance bench, ablation runs,
