@@ -1,62 +1,25 @@
 {
-  "name": "@231self/opencode-router",
-  "version": "0.2.8",
-  "description": "Per-turn model routing for OpenCode V2 and Kilo, decided by a small local judge (oMLX, llama.cpp, or any OpenAI-compatible server), with a WASM routing core and context optimiser.",
+  "name": "opencode-router-workspace",
+  "version": "0.0.0",
+  "private": true,
   "type": "module",
-  "license": "Apache-2.0",
-  "author": "231self",
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/231self/opencode-router.git"
-  },
-  "homepage": "https://github.com/231self/opencode-router#readme",
-  "bugs": {
-    "url": "https://github.com/231self/opencode-router/issues"
-  },
-  "exports": {
-    ".": "./src/index.js",
-    "./tui": "./src/tui.js"
-  },
-  "bin": {
-    "opencode-model-router": "bin/omlx-router.mjs",
-    "omlx-router": "bin/omlx-router.mjs"
-  },
-  "files": [
-    "src",
-    "dist/core.wasm",
-    "bin",
-    "README.md",
-    "CHANGELOG.md",
-    "LICENSE",
-    "config.example.json"
-  ],
-  "engines": {
-    "node": ">=22"
-  },
-  "keywords": [
-    "opencode",
-    "kilo",
-    "plugin",
-    "llm-router",
-    "omlx",
-    "mlx",
-    "wasm"
+  "workspaces": [
+    "packages/*"
   ],
   "scripts": {
-    "build": "bun run build:wasm",
+    "build": "bash scripts/build-wasm.sh",
     "build:wasm": "bash scripts/build-wasm.sh",
     "test": "bun run build:wasm && bun test",
-    "test:rust": "cargo test --manifest-path core/Cargo.toml",
+    "test:rust": "cargo test --manifest-path packages/router/core/Cargo.toml",
     "check": "bash scripts/check.sh",
     "security": "node scripts/security-check.mjs",
-    "prepack": "bun run build:wasm",
-    "test:e2e": "bun tests/e2e/run.mjs",
-    "test:e2e:live": "bun tests/e2e/run.mjs --real-judge --only live-judge",
-    "test:e2e:list": "bun tests/e2e/run.mjs --list",
-    "judge:calibrate": "bun tests/judge-calibration.mjs",
-    "routing:eval": "bun tests/routing-eval.mjs",
-    "bench": "bun tests/benchmark.mjs",
-    "bench:long": "bun tests/benchmark.mjs --long",
-    "quality:eval": "bun tests/quality-eval.mjs"
+    "test:e2e": "bun packages/router/tests/e2e/run.mjs",
+    "test:e2e:live": "bun packages/router/tests/e2e/run.mjs --real-judge --only live-judge",
+    "test:e2e:list": "bun packages/router/tests/e2e/run.mjs --list",
+    "judge:calibrate": "bun packages/router/tests/judge-calibration.mjs",
+    "routing:eval": "bun packages/router/tests/routing-eval.mjs",
+    "bench": "bun packages/router/tests/benchmark.mjs",
+    "bench:long": "bun packages/router/tests/benchmark.mjs --long",
+    "quality:eval": "bun packages/router/tests/quality-eval.mjs"
   }
 }

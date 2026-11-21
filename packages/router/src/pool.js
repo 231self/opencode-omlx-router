@@ -2,7 +2,7 @@ import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 
-import { costSource, mergeCost, normaliseCost } from "./cost.js"
+import { costSource, mergeCost, normaliseCost } from "@231self/opencode-econ/cost.js"
 import { priceForModel } from "./pricing.js"
 import { qualityForModel } from "./quality.js"
 

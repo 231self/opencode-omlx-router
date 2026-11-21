@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test"
 
-import { SECRET_PATTERNS, scanText } from "../scripts/security-check.mjs"
+import { SECRET_PATTERNS, checkDependencies, scanText } from "../../../scripts/security-check.mjs"
 
 // Synthetic fixtures are assembled at runtime on purpose: a scanner that
 // exempts its own test file would hide real findings there too.
@@ -31,4 +31,14 @@ test("ordinary source text is clean", () => {
   ].join("\n")
   expect(scanText(source)).toEqual([])
   expect(SECRET_PATTERNS.length).toBeGreaterThan(4)
+})
+
+test("workspace siblings are the only allowed dependencies", () => {
+  expect(checkDependencies({ dependencies: { "@231self/opencode-econ": "^0.1.0" } })).toEqual([])
+  expect(checkDependencies({ dependencies: { "left-pad": "^1.3.0" } })).toEqual(["dependencies: left-pad"])
+  expect(checkDependencies({ devDependencies: { vitest: "1.0.0" }, peerDependencies: { react: "18" } })).toEqual([
+    "devDependencies: vitest",
+    "peerDependencies: react",
+  ])
+  expect(checkDependencies({})).toEqual([])
 })

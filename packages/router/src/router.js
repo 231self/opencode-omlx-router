@@ -15,7 +15,7 @@ import {
   writePin,
   writeStats,
 } from "./state.js"
-import { cacheHitShare, countContextTokens, estimateTokens, measureSessionContext } from "./tokens.js"
+import { cacheHitShare, countContextTokens, estimateTokens, measureSessionContext } from "@231self/opencode-econ/tokens.js"
 
 export function refOf(model) {
   if (!model) return null

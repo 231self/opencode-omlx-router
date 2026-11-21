@@ -3,10 +3,11 @@
  * Deterministic, offline security gate. No network, no third-party scanner:
  * everything here is a local fact we can verify on every push.
  *
- *  1. no secret-shaped strings in the tree or in the published tarball
- *  2. no npm dependencies, so there is no supply chain to poison
- *  3. no credential-shaped files in the tarball
- *  4. the tarball contains only what package.json says it should
+ *  1. no secret-shaped strings in the tree or in any published tarball
+ *  2. no external npm dependencies (workspace siblings are allowed), so
+ *     there is no supply chain to poison
+ *  3. no credential-shaped files in the tarballs
+ *  4. each tarball contains only what its package.json says it should
  */
 import { execFileSync } from "node:child_process"
 import fs from "node:fs"
@@ -36,7 +37,24 @@ const TEXT_EXTENSIONS = new Set([
 ])
 const SKIP_DIRS = new Set([".git", ".jj", "node_modules", "target", "dist", "pkgcheck"])
 const FORBIDDEN_NAMES = [/^auth\.json$/i, /^secrets?/i, /^id_rsa/i, /^\.env/i, /\.pem$/i, /\.key$/i, /\.p12$/i, /\.pfx$/i, /\.db$/i, /\.sqlite3?$/i]
-const ALLOWED_TARBALL_ROOTS = ["package.json", "README.md", "CHANGELOG.md", "LICENSE", "config.example.json", "src", "bin", "dist"]
+
+/**
+ * Published packages and their tarball allowlists. Keep in sync with each
+ * package's `files` field: this gate fails on anything beyond the list.
+ */
+const PACKAGES = [
+  {
+    dir: "packages/econ",
+    allowedRoots: ["package.json", "README.md", "CHANGELOG.md", "LICENSE", "src"],
+  },
+  {
+    dir: "packages/router",
+    allowedRoots: ["package.json", "README.md", "CHANGELOG.md", "LICENSE", "config.example.json", "src", "bin", "dist"],
+  },
+]
+
+/** Workspace siblings may depend on each other; nothing else may be present. */
+const WORKSPACE_PREFIX = "@231self/"
 
 /** Secret shapes worth failing a build over. */
 export const SECRET_PATTERNS = [
@@ -70,6 +88,21 @@ export function scanText(text) {
   return findings
 }
 
+/**
+ * Dependency fields that must stay empty except for workspace siblings.
+ * Returns offending `field: name` strings.
+ */
+export function checkDependencies(manifest) {
+  const fields = ["dependencies", "devDependencies", "optionalDependencies", "peerDependencies", "bundledDependencies"]
+  const offenders = []
+  for (const field of fields) {
+    for (const name of Object.keys(manifest[field] ?? {})) {
+      if (!name.startsWith(WORKSPACE_PREFIX)) offenders.push(`${field}: ${name}`)
+    }
+  }
+  return offenders
+}
+
 function* walk(dir) {
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
     if (SKIP_DIRS.has(entry.name)) continue
@@ -95,11 +128,11 @@ function scanTree() {
   return findings
 }
 
-function packTarball() {
+function packTarball(pkgDir) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "omlx-router-security-"))
   // --ignore-scripts: scanning must not rebuild the world through prepack.
   execFileSync("npm", ["pack", "--ignore-scripts", "--pack-destination", dir, "--silent"], {
-    cwd: ROOT,
+    cwd: path.join(ROOT, pkgDir),
     stdio: "pipe",
   })
   const tarball = fs.readdirSync(dir).find((name) => name.endsWith(".tgz"))
@@ -107,14 +140,14 @@ function packTarball() {
   return path.join(dir, "package")
 }
 
-function scanTarball() {
-  const packed = packTarball()
+function scanTarball(pkg) {
+  const packed = packTarball(pkg.dir)
   const findings = []
   const offenders = []
   for (const file of walk(packed)) {
     const relative = path.relative(packed, file)
     const root = relative.split(path.sep)[0]
-    if (!ALLOWED_TARBALL_ROOTS.includes(root)) offenders.push(`unexpected path: ${relative}`)
+    if (!pkg.allowedRoots.includes(root)) offenders.push(`unexpected path: ${relative}`)
     if (FORBIDDEN_NAMES.some((pattern) => pattern.test(path.basename(file)))) {
       offenders.push(`credential-shaped file: ${relative}`)
       continue
@@ -125,12 +158,6 @@ function scanTarball() {
     }
   }
   return { findings, offenders }
-}
-
-function checkDependencies() {
-  const manifest = JSON.parse(fs.readFileSync(path.join(ROOT, "package.json"), "utf8"))
-  const fields = ["dependencies", "devDependencies", "optionalDependencies", "peerDependencies", "bundledDependencies"]
-  return fields.filter((field) => Object.keys(manifest[field] ?? {}).length > 0)
 }
 
 function main() {
@@ -151,13 +178,19 @@ function main() {
     tree.map((f) => `${f.file}: ${f.label} (${f.sample})`),
   )
 
-  const { findings, offenders } = scanTarball()
-  report(
-    "no secrets in the published tarball",
-    findings.map((f) => `${f.file}: ${f.label} (${f.sample})`),
-  )
-  report("no unexpected files in the tarball", offenders)
-  report("no npm dependencies", checkDependencies().map((field) => `package.json has ${field}`))
+  for (const pkg of PACKAGES) {
+    const { findings, offenders } = scanTarball(pkg)
+    report(
+      `${pkg.dir}: no secrets in the published tarball`,
+      findings.map((f) => `${f.file}: ${f.label} (${f.sample})`),
+    )
+    report(`${pkg.dir}: no unexpected files in the tarball`, offenders)
+    const manifest = JSON.parse(fs.readFileSync(path.join(ROOT, pkg.dir, "package.json"), "utf8"))
+    report(
+      `${pkg.dir}: no external npm dependencies`,
+      checkDependencies(manifest),
+    )
+  }
 
   if (failures.length > 0) {
     console.log(`\nsecurity check failed: ${failures.join(", ")}`)

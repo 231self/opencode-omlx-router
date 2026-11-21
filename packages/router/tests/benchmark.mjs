@@ -28,7 +28,7 @@ import path from "node:path"
 
 import os from "node:os"
 
-import { modelledTurnCost } from "../src/cost.js"
+import { modelledTurnCost } from "@231self/opencode-econ/cost.js"
 import { DEFAULT_CONFIG, mergeConfig } from "../src/config.js"
 import { readJudgeNoise } from "../src/judge.js"
 import { readDecisions, readTurns } from "../src/state.js"

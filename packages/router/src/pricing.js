@@ -1,7 +1,7 @@
 import fs from "node:fs"
 import path from "node:path"
 
-import { normaliseCost } from "./cost.js"
+import { normaliseCost } from "@231self/opencode-econ/cost.js"
 import { normalizeModelName } from "./quality.js"
 import { stateRoot, writeJsonAtomic } from "./state.js"
 

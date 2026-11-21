@@ -2,17 +2,26 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-cargo fmt --manifest-path core/Cargo.toml -- --check
-cargo clippy --manifest-path core/Cargo.toml --all-targets -- -D warnings
-cargo test --manifest-path core/Cargo.toml
+# One entry per Rust crate; keep in sync with scripts/build-wasm.sh.
+CRATES=(packages/router/core)
+
+for crate in "${CRATES[@]}"; do
+  cargo fmt --manifest-path "$crate/Cargo.toml" -- --check
+  cargo clippy --manifest-path "$crate/Cargo.toml" --all-targets -- -D warnings
+  cargo test --manifest-path "$crate/Cargo.toml"
+done
+
 bun run build:wasm
 bun test
 node scripts/security-check.mjs
 
-size=$(wc -c < dist/core.wasm | tr -d ' ')
 limit=614400
-if [ "$size" -gt "$limit" ]; then
-  echo "dist/core.wasm is ${size} bytes, over the ${limit}-byte limit" >&2
-  exit 1
-fi
-echo "check: ok (${size} bytes)"
+for wasm in packages/*/dist/core.wasm; do
+  size=$(wc -c < "$wasm" | tr -d ' ')
+  if [ "$size" -gt "$limit" ]; then
+    echo "$wasm is ${size} bytes, over the ${limit}-byte limit" >&2
+    exit 1
+  fi
+  echo "size gate ok: $wasm (${size} bytes, limit ${limit})"
+done
+echo "check: ok"

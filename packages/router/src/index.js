@@ -1,5 +1,5 @@
 import { readConfig } from "./config.js"
-import { normaliseCost } from "./cost.js"
+import { normaliseCost } from "@231self/opencode-econ/cost.js"
 import { VERSION } from "./version.js"
 import { Router, refOf } from "./router.js"
 import { refreshPricingIfStale } from "./pricing.js"

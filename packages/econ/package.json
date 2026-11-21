@@ -1,0 +1,37 @@
+{
+  "name": "@231self/opencode-econ",
+  "version": "0.1.0",
+  "description": "Cache-aware token pricing and measurement shared by the opencode-router packages: cost-shape normalisation, modelled turn cost, and measured cache-hit share.",
+  "type": "module",
+  "license": "Apache-2.0",
+  "author": "231self",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/231self/opencode-router.git",
+    "directory": "packages/econ"
+  },
+  "homepage": "https://github.com/231self/opencode-router#readme",
+  "bugs": {
+    "url": "https://github.com/231self/opencode-router/issues"
+  },
+  "exports": {
+    "./cost.js": "./src/cost.js",
+    "./tokens.js": "./src/tokens.js"
+  },
+  "files": [
+    "src",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "keywords": [
+    "llm",
+    "pricing",
+    "cache",
+    "tokens",
+    "opencode"
+  ]
+}
