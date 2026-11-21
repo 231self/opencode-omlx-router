@@ -193,3 +193,28 @@ export function mergeCost(tiers, fallback) {
     ...rest,
   ]
 }
+
+/**
+ * Modelled cost of one turn at per-million-token prices.
+ *
+ * The stable prefix (what the provider's prompt cache can serve) is charged at
+ * `cacheHitRatio` of `prefixTokens` and the cache-read price; the remainder at
+ * the input price; output tokens at the output price. A turn that switches
+ * models passes `prefixTokens: 0` (cold prefill).
+ */
+export function modelledTurnCost({
+  price: tier,
+  inputTokens,
+  prefixTokens = 0,
+  cacheHitRatio = 0,
+  outputTokens = 0,
+}) {
+  const ratio = Math.min(1, Math.max(0, Number(cacheHitRatio) || 0))
+  const cached = Math.min(inputTokens, Math.max(0, Number(prefixTokens) || 0)) * ratio
+  const fresh = inputTokens - cached
+  return (
+    (fresh / 1_000_000) * (tier?.input ?? 0) +
+    (cached / 1_000_000) * (tier?.cache?.read ?? 0) +
+    (outputTokens / 1_000_000) * (tier?.output ?? 0)
+  )
+}

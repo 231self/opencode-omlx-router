@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test"
 
-import { costSource, mergeCost, normaliseCost, tiersOf } from "../src/cost.js"
+import { costSource, mergeCost, normaliseCost, tiersOf, modelledTurnCost } from "../src/cost.js"
 
 const CATALOG = [{ input: 0.15, output: 0.6, cache: { read: 0.003, write: 0 } }]
 
@@ -132,4 +132,26 @@ test("costSource names where the price came from", () => {
   expect(costSource(normaliseCost([]), external)).toBe("modelsdev")
   expect(costSource(zeros, null)).toBe("catalog")
   expect(costSource(normaliseCost([]), null)).toBe("unknown")
+})
+
+test("modelledTurnCost charges the cached prefix at the cache price", () => {
+  const price = { input: 2, output: 8, cache: { read: 0.5, write: 2 } }
+  // cold turn: all input at full price
+  expect(
+    modelledTurnCost({ price, inputTokens: 1000, prefixTokens: 0, cacheHitRatio: 0.8, outputTokens: 800 }),
+  ).toBeCloseTo((1000 * 2 + 800 * 8) / 1_000_000, 9)
+  // warm turn: 80% of the 1000-token prefix at the cache-read price
+  expect(
+    modelledTurnCost({ price, inputTokens: 2000, prefixTokens: 1000, cacheHitRatio: 0.8, outputTokens: 0 }),
+  ).toBeCloseTo((1200 * 2 + 800 * 0.5) / 1_000_000, 9)
+})
+
+test("modelledTurnCost clamps the ratio and tolerates missing prices", () => {
+  const price = { input: 1 }
+  expect(
+    modelledTurnCost({ price, inputTokens: 100, prefixTokens: 100, cacheHitRatio: 5, outputTokens: 0 }),
+  ).toBeCloseTo(0, 9)
+  expect(
+    modelledTurnCost({ price: {}, inputTokens: 100, prefixTokens: 100, cacheHitRatio: 0.8, outputTokens: 50 }),
+  ).toBe(0)
 })

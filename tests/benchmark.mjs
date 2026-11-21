@@ -16,16 +16,27 @@
  *   bun tests/benchmark.mjs --long
  *   bun tests/benchmark.mjs --json
  *   bun tests/benchmark.mjs --write
+ *
+ * Beyond the scenario table, the report sweeps the cache-hit assumption
+ * (50/80/95%) two ways: rescoring the same recorded decisions, and re-running
+ * the router with the assumption as an input. Judge wall-clock is reported
+ * from measured usage next to the modelled dollars.
  */
 
 import fs from "node:fs"
 import path from "node:path"
 
+import os from "node:os"
+
+import { modelledTurnCost } from "../src/cost.js"
 import { DEFAULT_CONFIG, mergeConfig } from "../src/config.js"
+import { readJudgeNoise } from "../src/judge.js"
+import { readDecisions, readTurns } from "../src/state.js"
 import { loadCore } from "../src/wasm.js"
 
 const OUTPUT_TOKENS = 800
-const CACHE_HIT_RATIO = 0.8
+const DEFAULT_CACHE_HIT_RATIO = 0.8
+const SENSITIVITY_RATIOS = [0.5, 0.8, 0.95]
 
 const SUITES = {
   short: {
@@ -206,22 +217,21 @@ function requiredQuality(verdict) {
   return Math.min(1, base + reasoning + planning)
 }
 
-function turnCost(model, tokens, cachedTokens) {
-  const price = model.cost[0]
-  const cached = Math.min(tokens, Math.max(0, cachedTokens)) * CACHE_HIT_RATIO
-  const fresh = tokens - cached
-  return (
-    (fresh / 1_000_000) * price.input +
-    (cached / 1_000_000) * price.cache.read +
-    (OUTPUT_TOKENS / 1_000_000) * price.output
-  )
+function turnCost(model, tokens, cachedTokens, cacheHitRatio = DEFAULT_CACHE_HIT_RATIO) {
+  return modelledTurnCost({
+    price: model.cost[0],
+    inputTokens: tokens,
+    prefixTokens: cachedTokens,
+    cacheHitRatio,
+    outputTokens: OUTPUT_TOKENS,
+  })
 }
 
 function passes(model, verdict) {
   return model.quality + 1e-9 >= requiredQuality(verdict)
 }
 
-function settings({ mode = "balanced", policy = "cost" } = {}) {
+function settings({ mode = "balanced", policy = "cost", cacheHitRatio = DEFAULT_CACHE_HIT_RATIO } = {}) {
   return mergeConfig(DEFAULT_CONFIG, {
     policy,
     pool: {
@@ -237,7 +247,7 @@ function settings({ mode = "balanced", policy = "cost" } = {}) {
         [label(MODELS.frontier)]: MODELS.frontier.quality,
       },
     },
-    pin: { mode },
+    pin: { mode, cacheHitRatio },
     judge: { enabled: true },
   })
 }
@@ -292,20 +302,25 @@ function staticTierScenario(suite) {
   }
 }
 
-async function routerScenario(core, mode, { suite, overrides = {}, name = `router ${mode}` } = {}) {
-  const config = mergeConfig(settings({ mode }), overrides)
+async function routerScenario(
+  core,
+  mode,
+  { suite, overrides = {}, name = `router ${mode}`, cacheHitRatio = DEFAULT_CACHE_HIT_RATIO } = {},
+) {
+  const config = mergeConfig(settings({ mode, cacheHitRatio }), overrides)
   let pin = null
   let current = null
   let previousTokens = 0
   let cost = 0
   let passed = 0
   let switches = 0
+  let judgeCalls = 0
   const choices = []
 
   for (let turn = 1; turn <= suite.turns; turn += 1) {
     const testCase = caseAt(suite, turn)
     const tokens = suite.tokensAt(turn)
-    const result = core.route({
+    const request = {
       abi: 1,
       nowMs: turn * 1000,
       host: "benchmark",
@@ -330,7 +345,12 @@ async function routerScenario(core, mode, { suite, overrides = {}, name = `route
       pin,
       judge: { verdict: testCase.truth, cached: false, unavailable: false },
       stats: { decisions: turn - 1, switches },
-    })
+    }
+    // The core short-circuits deterministically when it can; only the rest
+    // need a judge verdict. Count them instead of assuming one per turn.
+    const probe = core.route({ ...request, judge: { verdict: null, cached: false, unavailable: false } })
+    if (probe.action === "need_judge") judgeCalls += 1
+    const result = core.route(request)
 
     const chosen = result.decision
       ? { providerID: result.decision.providerID, id: result.decision.id, variant: result.decision.variant ?? "default" }
@@ -347,7 +367,7 @@ async function routerScenario(core, mode, { suite, overrides = {}, name = `route
     }
     const switched = current ? modelKey(current) !== key : false
     if (switched) switches += 1
-    cost += turnCost(model, tokens, switched ? 0 : previousTokens)
+    cost += turnCost(model, tokens, switched ? 0 : previousTokens, cacheHitRatio)
     if (passes(model, testCase.truth)) passed += 1
     choices.push(key)
     current = chosen
@@ -362,6 +382,88 @@ async function routerScenario(core, mode, { suite, overrides = {}, name = `route
     switches,
     cost,
     choices,
+    judgeCalls,
+    cacheHitRatio,
+  }
+}
+
+/**
+ * Rescore one recorded decision sequence at a different cache-hit assumption.
+ * The choices (and therefore the switch count) stay fixed: this isolates the
+ * pricing assumption from the routing behaviour.
+ */
+export function rescoreScenario({ name, choices, suite, cacheHitRatio, switches }) {
+  let cost = 0
+  let previousKey = null
+  let previousTokens = 0
+  for (let turn = 1; turn <= suite.turns; turn += 1) {
+    const key = choices[turn - 1]
+    const model = Object.values(MODELS).find((entry) => label(entry) === key) ?? MODELS.cheap
+    const tokens = suite.tokensAt(turn)
+    cost += turnCost(model, tokens, key === previousKey ? previousTokens : 0, cacheHitRatio)
+    previousKey = key
+    previousTokens = tokens
+  }
+  return { name, cost, switches, turns: suite.turns, fixedDecisions: true }
+}
+
+/** Both sensitivity sweeps over the cache-hit assumption. */
+export async function sensitivity(core, suite) {
+  const balanced = await routerScenario(core, "balanced", { suite })
+  const switching = await routerScenario(core, "switch", { suite })
+  const rescored = SENSITIVITY_RATIOS.map((cacheHitRatio) => ({
+    cacheHitRatio,
+    balanced: rescoreScenario({
+      name: "balanced",
+      choices: balanced.choices,
+      suite,
+      cacheHitRatio,
+      switches: balanced.switches,
+    }),
+    switch: rescoreScenario({
+      name: "switch",
+      choices: switching.choices,
+      suite,
+      cacheHitRatio,
+      switches: switching.switches,
+    }),
+  }))
+  const rerun = []
+  for (const cacheHitRatio of SENSITIVITY_RATIOS) {
+    rerun.push({
+      cacheHitRatio,
+      balanced: await routerScenario(core, "balanced", { suite, cacheHitRatio }),
+      switch: await routerScenario(core, "switch", { suite, cacheHitRatio }),
+    })
+  }
+  return { recorded: { balanced, switch: switching }, rescored, rerun }
+}
+
+/**
+ * Judge wall-clock measured from real usage, or null when unmeasured.
+ *
+ * Decision records say which turns consulted the judge and which answers came
+ * from its verdict cache; turn records carry the fresh-call latency.
+ */
+export function measuredJudgeLatency(env = process.env) {
+  const turns = readTurns("opencode", 2000, env)
+  const decisions = readDecisions("opencode", 2000, env)
+  const consulted = decisions.filter((record) => record.judge?.used)
+  const cached = consulted.filter((record) => record.judge?.cached)
+  const fresh = turns.map((turn) => Number(turn.judgeMs) || 0).filter((ms) => ms > 0)
+  if (turns.length === 0 || (consulted.length === 0 && fresh.length === 0)) return null
+  fresh.sort((left, right) => left - right)
+  const mean = fresh.length > 0 ? fresh.reduce((sum, ms) => sum + ms, 0) / fresh.length : 0
+  return {
+    turns: turns.length,
+    consultedTurns: consulted.length,
+    consultedShare: decisions.length > 0 ? consulted.length / decisions.length : 0,
+    cachedTurns: cached.length,
+    freshCalls: fresh.length,
+    meanMs: Math.round(mean),
+    p95Ms: fresh.length > 0 ? Math.round(fresh[Math.min(fresh.length - 1, Math.floor(fresh.length * 0.95))]) : 0,
+    judgeModel: readJudgeNoise(env)?.selected ?? "auto",
+    platform: `${os.platform()} ${os.arch()}`,
   }
 }
 
@@ -369,7 +471,95 @@ function money(value) {
   return `$${Number(value).toFixed(3)}`
 }
 
-function markdown(results, suite) {
+/** Frame the balanced-vs-switch gap at the size of the gap, and no further. */
+function costGapBullet(switchRow, balanced) {
+  const gap = Math.abs(switchRow.cost - balanced.cost) / Math.max(balanced.cost, switchRow.cost)
+  const cheaper = switchRow.cost <= balanced.cost ? "switch" : "balanced"
+  const detail = `${(gap * 100).toFixed(1)}%`
+  if (gap < 0.02) {
+    return (
+      `- Balanced and switch differ by ${detail} here — inside the sensitivity of` +
+      " the 80% cache assumption (see the sweep below), so treat switching" +
+      " frequency as cost-neutral at these settings. The cache-aware pin exists" +
+      " to avoid repeated cold prefills; this scenario shows it does not pay for" +
+      " that protection."
+    )
+  }
+  return (
+    `- ${cheaper} is ${detail} cheaper in this scenario` +
+    ` (${money(Math.abs(switchRow.cost - balanced.cost))} on ${money(Math.max(switchRow.cost, balanced.cost))}).` +
+    " Whether that holds elsewhere depends on prices, context growth, and the" +
+    " assumption sweep below — read it as scenario-specific, not general."
+  )
+}
+
+function sensitivitySection(sens) {
+  const { recorded, rescored, rerun } = sens
+  return [
+    "## Sensitivity: the cache-hit assumption",
+    "",
+    "The modelled cost of keeping a model depends on how much of the prompt the",
+    "provider's cache serves. Two sweeps vary that assumption:",
+    "",
+    "**Rescoring the same recorded decisions** — switch counts held at the",
+    `recorded runs (balanced ${recorded.balanced.switches}, switch ${recorded.switch.switches}), so this isolates the pricing assumption:`,
+    "",
+    `| Assumed cache hit | balanced (${recorded.balanced.switches} switches) | switch (${recorded.switch.switches} switches) |`,
+    "|---:|---:|---:|",
+    ...rescored.map(
+      (row) => `| ${Math.round(row.cacheHitRatio * 100)}% | ${money(row.balanced.cost)} | ${money(row.switch.cost)} |`,
+    ),
+    "",
+    "**Re-running the router with the assumption as an input** — it changes the",
+    "incumbent's modelled cost, so decisions and switch counts can move:",
+    "",
+    "| Assumed cache hit | balanced cost | switches | switch cost | switches |",
+    "|---:|---:|---:|---:|---:|",
+    ...rerun.map(
+      (row) =>
+        `| ${Math.round(row.cacheHitRatio * 100)}% | ${money(row.balanced.cost)} | ${row.balanced.switches} | ${money(row.switch.cost)} | ${row.switch.switches} |`,
+    ),
+    "",
+    "A direction that holds across both sweeps is an operating envelope for this",
+    "price table and workload shape — not a guarantee for other prices, context",
+    "growth, or prompt mixes.",
+  ]
+}
+
+function judgeLatencySection(results, judgeLatency) {
+  const rows = results.filter((row) => row.judgeCalls !== undefined)
+  const lines = [
+    "## Judge latency",
+    "",
+    "The core classifies turns deterministically when it can and consults the",
+    "judge only when it must. Benchmark turns are fresh synthetic prompts, so",
+    "they ask for a verdict far more often than real sessions, where kept pins,",
+    "manual pins, and heuristic turns skip the judge entirely:",
+    "",
+    ...rows.map((row) => {
+      const seconds = judgeLatency
+        ? ` (up to ${((row.judgeCalls * judgeLatency.meanMs) / 1000).toFixed(1)} s at the measured fresh-call mean)`
+        : ""
+      return `- \`${row.name}\` asked for ${row.judgeCalls} of ${row.turns} turns${seconds}.`
+    }),
+  ]
+  if (judgeLatency) {
+    lines.push(
+      "",
+      `Measured on real usage (${judgeLatency.turns} turns logged, judge ${judgeLatency.judgeModel}, ${judgeLatency.platform}): the judge was consulted on ${Math.round(judgeLatency.consultedShare * 100)}% of turns (${judgeLatency.cachedTurns} of those from its verdict cache). Fresh calls took mean ${judgeLatency.meanMs} ms (p95 ${judgeLatency.p95Ms} ms).`,
+    )
+  } else {
+    lines.push("", "No measured judge timings were available on this machine.")
+  }
+  lines.push(
+    "",
+    "The judge is a local side call: no conversation tokens and no dollar cost.",
+    "Wall-clock is still a cost users pay, so it is reported next to the money.",
+  )
+  return lines
+}
+
+function markdown(results, suite, extra = {}) {
   const byName = Object.fromEntries(results.map((row) => [row.name, row]))
   const frontier = byName["fixed anthropic/claude-fable-5-2"]
   const cheap = byName["fixed deepseek/deepseek-flash"]
@@ -396,9 +586,7 @@ function markdown(results, suite) {
     `- \`mixed\` costs ${money(mixed.cost)} at ${passage(mixed)} quality, with ${mixed.switches} switches.`,
     "- Local models are priced at zero and get a size-based quality: the 27B",
     "  clears routine turns at 0.55, the 4B stays on trivial turns at 0.45.",
-    switchRow.cost > balanced.cost
-      ? `- The pin wins at this context size: switch pays ${money(switchRow.cost - balanced.cost)} more than balanced. Several cold prefills at ${Math.round(first / 1000)}k–${Math.round(last / 1000)}k tokens cost more than keeping the incumbent cached.`
-      : `- Switching wins at this context size: switch saves ${money(balanced.cost - switchRow.cost)} against balanced. The cold prefill is cheaper than the incumbent's output price.`,
+    costGapBullet(switchRow, balanced),
   ]
 
   return [
@@ -414,7 +602,8 @@ function markdown(results, suite) {
     `- Context grows from ${Math.round(first / 1000)}k to ${Math.round(last / 1000)}k input tokens; ${OUTPUT_TOKENS} output tokens per turn.`,
     "- Prices per million tokens: cheap 0.2/0.8, mid 2/8, frontier 8/40.",
     "- Cache assumption: 80% of the stable prefix is read from cache on turns",
-    "  that keep the same model; a switch pays a cold prefill.",
+    "  that keep the same model; a switch pays a cold prefill. The sensitivity",
+    "  section sweeps this assumption.",
     "- Quality: cheap 0.55, mid 0.85, frontier 0.95, compared against the quality",
     "  required by each recorded verdict.",
     "",
@@ -431,13 +620,15 @@ function markdown(results, suite) {
     "  the model actually solved the task.",
     "- The static tier baseline is simulated from verdict complexity. It is a",
     "  category baseline, not a run of another plugin.",
-    "- Judge latency is not included; the judge is a side call and adds no tokens",
-    "  to the conversation.",
+    "- Dollar figures cover model tokens only. Judge wall-clock is measured and",
+    "  reported in its own section below.",
     "",
     "## Reading the numbers",
     "",
     ...bullets,
     "",
+    ...(extra.sensitivity ? [...sensitivitySection(extra.sensitivity), ""] : []),
+    ...(extra.judgeLatency === undefined ? [] : [...judgeLatencySection(results, extra.judgeLatency), ""]),
     "## Reproduce",
     "",
     "```sh",
@@ -479,12 +670,17 @@ async function main() {
     }),
   ]
 
+  const sens = await sensitivity(core, suite)
+  const judgeLatency = measuredJudgeLatency()
+
   if (options.json) {
-    console.log(JSON.stringify({ suite: suite.name, turns: suite.turns, results }, null, 2))
+    console.log(
+      JSON.stringify({ suite: suite.name, turns: suite.turns, results, sensitivity: sens, judgeLatency }, null, 2),
+    )
     return 0
   }
 
-  const text = markdown(results, suite)
+  const text = markdown(results, suite, { sensitivity: sens, judgeLatency })
   if (options.write) {
     const target = path.resolve(import.meta.dir, `../docs/benchmarks/${suite.file}`)
     fs.mkdirSync(path.dirname(target), { recursive: true })
@@ -497,4 +693,6 @@ async function main() {
   return 0
 }
 
-process.exit(await main())
+if (import.meta.main) process.exit(await main())
+
+export { MODELS, SUITES }
