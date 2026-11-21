@@ -215,6 +215,16 @@ export function readTurns(host, limit = 50, env = process.env) {
   return out
 }
 
+/** The most recent turn record for one session hash, or null. */
+export function latestTurnFor(host, session, env = process.env) {
+  const wanted = String(session ?? "")
+  const turns = readTurns(host, 1000, env)
+  for (let index = turns.length - 1; index >= 0; index -= 1) {
+    if (turns[index]?.session === wanted) return turns[index]
+  }
+  return null
+}
+
 const TIMING_METRICS = [
   "turnMs",
   "routeMs",

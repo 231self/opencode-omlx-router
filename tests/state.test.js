@@ -5,9 +5,11 @@ import path from "node:path"
 
 import {
   appendDecision,
+  appendTurn,
   clearPin,
   decisionsPath,
   hostStateDir,
+  latestTurnFor,
   listPins,
   pinFile,
   readDecisions,
@@ -84,4 +86,17 @@ test("stats round-trip and tolerate corruption", () => {
   expect(readStats(host, env)).toEqual({ decisions: 4 })
   fs.writeFileSync(path.join(hostStateDir(host, env), "stats.json"), "not json")
   expect(readStats(host, env)).toBeNull()
+})
+
+test("latestTurnFor returns the newest record for one session", () => {
+  const { env } = tempEnv()
+  const host = "opencode"
+  const mine = sessionHash("ses_1")
+  const other = sessionHash("ses_2")
+  appendTurn(host, { ts: 1, session: other, usedModel: "a/b" }, env)
+  appendTurn(host, { ts: 2, session: mine, usedModel: "deepseek/deepseek-flash" }, env)
+  appendTurn(host, { ts: 3, session: other, usedModel: "c/d" }, env)
+  appendTurn(host, { ts: 4, session: mine, usedModel: "deepseek/deepseek-v4-pro" }, env)
+  expect(latestTurnFor(host, mine, env).usedModel).toBe("deepseek/deepseek-v4-pro")
+  expect(latestTurnFor(host, sessionHash("ses_none"), env)).toBeNull()
 })

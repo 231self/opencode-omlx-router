@@ -3,8 +3,9 @@ import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 
+import { readConfig, saveConfig } from "../src/config.js"
 import { Router, cooldownFor, isFailoverError, isProviderWide } from "../src/router.js"
-import { appendDecision, readDecisions, readPin, writePin } from "../src/state.js"
+import { appendDecision, appendTurn, readDecisions, readPin, sessionHash, writePin } from "../src/state.js"
 
 const MODELS = [
   {
@@ -636,4 +637,82 @@ test("no-pool decisions carry an actionable onboarding hint", async () => {
   const [decision] = readDecisions("opencode", 1, env)
   expect(decision.reason).toBe("no_pool")
   expect(decision.hint).toContain("/router pool")
+})
+
+test("the incumbent is priced with its measured cache share", async () => {
+  const env = tempEnv()
+  const requests = []
+  const { router } = harness({
+    env,
+    core: {
+      route(request) {
+        requests.push(request)
+        return decisionResponse()
+      },
+    },
+  })
+  const flash = { providerID: "deepseek", id: "deepseek-flash", variant: "default" }
+
+  // A pin with nothing measurable keeps the configured assumption.
+  writePin("opencode", "ses_1", { model: flash, forced: true, since: 1, lastTurnAt: 2 }, env)
+  await router.prompt({ sessionID: "ses_1", prompt: { text: "hi" } })
+  expect(requests.at(-1).settings.pin.cacheHitRatio).toBe(0.8)
+
+  // The pinned model served the last turn: its measured share applies.
+  appendTurn(
+    "opencode",
+    {
+      ts: Date.now(),
+      session: sessionHash("ses_1"),
+      usedModel: "deepseek/deepseek-flash",
+      tokens: { input: 200, output: 10, reasoning: 0, cache: { read: 600, write: 0 } },
+    },
+    env,
+  )
+  await router.prompt({ sessionID: "ses_1", prompt: { text: "again" } })
+  expect(requests.at(-1).settings.pin.cacheHitRatio).toBeCloseTo(0.75, 6)
+
+  // Another model served the last turn: this pin has earned no cache.
+  appendTurn(
+    "opencode",
+    {
+      ts: Date.now(),
+      session: sessionHash("ses_1"),
+      usedModel: "deepseek/deepseek-v4-pro",
+      tokens: { input: 200, output: 10, reasoning: 0, cache: { read: 600, write: 0 } },
+    },
+    env,
+  )
+  await router.prompt({ sessionID: "ses_1", prompt: { text: "third" } })
+  expect(requests.at(-1).settings.pin.cacheHitRatio).toBe(0)
+})
+
+test("a configured zero keeps the cache discount off", async () => {
+  const env = tempEnv()
+  const requests = []
+  const { router } = harness({
+    env,
+    core: {
+      route(request) {
+        requests.push(request)
+        return decisionResponse()
+      },
+    },
+  })
+  const config = readConfig({ env, write: true }).config
+  saveConfig({ ...config, pin: { ...config.pin, cacheHitRatio: 0 } }, { env })
+  const flash = { providerID: "deepseek", id: "deepseek-flash", variant: "default" }
+  writePin("opencode", "ses_1", { model: flash, forced: true, since: 1, lastTurnAt: 2 }, env)
+  appendTurn(
+    "opencode",
+    {
+      ts: Date.now(),
+      session: sessionHash("ses_1"),
+      usedModel: "deepseek/deepseek-flash",
+      tokens: { input: 200, output: 10, reasoning: 0, cache: { read: 600, write: 0 } },
+    },
+    env,
+  )
+  await router.prompt({ sessionID: "ses_1", prompt: { text: "hi" } })
+  expect(requests.at(-1).settings.pin.cacheHitRatio).toBe(0)
 })

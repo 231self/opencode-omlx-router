@@ -76,3 +76,21 @@ export function measureSessionContext(response) {
   }
   return { tokens, checkpoint }
 }
+
+/**
+ * Observed cache-read share of a turn's prompt: `cache.read` over the full
+ * prefill.
+ *
+ * Provider usage reports cached tokens apart from `input`, which covers only
+ * cache misses. Verified against recorded turn costs: misses × input price +
+ * hits × cache-read price + (output + reasoning) × output price reproduces the
+ * host-reported cost exactly, so the denominator is `input + read + write`.
+ */
+export function cacheHitShare(tokens) {
+  const input = Number(tokens?.input) || 0
+  const read = Number(tokens?.cache?.read) || 0
+  const write = Number(tokens?.cache?.write) || 0
+  const prefill = input + read + write
+  if (read <= 0 || prefill <= 0) return 0
+  return Math.min(1, read / prefill)
+}

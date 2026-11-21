@@ -7,6 +7,7 @@ import { applyPlan, buildOptimiseRequest } from "./optimiser.js"
 import {
   appendDecision,
   clearPin,
+  latestTurnFor,
   readDecisions,
   readPin,
   readStats,
@@ -14,7 +15,7 @@ import {
   writePin,
   writeStats,
 } from "./state.js"
-import { countContextTokens, estimateTokens, measureSessionContext } from "./tokens.js"
+import { cacheHitShare, countContextTokens, estimateTokens, measureSessionContext } from "./tokens.js"
 
 export function refOf(model) {
   if (!model) return null
@@ -165,6 +166,23 @@ function pinForRequest(pin) {
     source: pin.source ?? "",
     forced: Boolean(pin.forced),
   }
+}
+
+/**
+ * The cache-read share used to price the incumbent.
+ *
+ * When the pinned model served the session's last turn, its measured share
+ * applies; a pin that has not earned a cache (another model served the last
+ * turn) is priced cold. With nothing measurable, or when the configured
+ * assumption is 0 (discount off), the configured value applies unchanged.
+ */
+function cacheHitRatioFor({ host, env, hash, pin, fallback }) {
+  if (!pin?.model || !(fallback > 0)) return fallback
+  const last = latestTurnFor(host, hash, env)
+  if (!last) return fallback
+  const pinned = `${pin.model.providerID}/${pin.model.id ?? pin.model.modelID}`
+  if (last.usedModel !== pinned) return 0
+  return Math.min(0.95, cacheHitShare(last.tokens))
 }
 
 /**
@@ -345,6 +363,14 @@ export class Router {
         (measured && sizedPrompt && (!pending || completed) && totalInput <= inputBudget(model, config)))
       const stats = readStats(this.host, this.env) ?? { decisions: 0, switches: 0 }
 
+      const hash = sessionHash(sessionID)
+      const cacheHitRatio = cacheHitRatioFor({
+        host: this.host,
+        env: this.env,
+        hash,
+        pin,
+        fallback: Number.isFinite(Number(config.pin?.cacheHitRatio)) ? Number(config.pin.cacheHitRatio) : 0.8,
+      })
       const request = {
         abi: 1,
         nowMs: Date.now(),
@@ -352,7 +378,7 @@ export class Router {
         kind: "primary",
         role: info?.parentID ? "subagent" : "root",
         session: {
-          hash: sessionHash(sessionID),
+          hash,
           parentHash: info?.parentID ? sessionHash(info.parentID) : null,
           agentID: info?.agent ?? "",
           agentMode: agent?.mode ?? "",
@@ -369,7 +395,7 @@ export class Router {
           turnClassHint: null,
         },
         pool: eligible,
-        settings: config,
+        settings: { ...config, pin: { ...config.pin, cacheHitRatio } },
         pin: completed && !pin?.forced ? null : pinForRequest(pin),
         judge: { verdict: null, cached: false, unavailable: false },
         stats,
