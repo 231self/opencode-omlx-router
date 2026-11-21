@@ -35,6 +35,15 @@
   past 80 columns and that rows in a section share one value column.
 - Model labels no longer show a `#default` variant suffix.
 
+### Fixed
+
+- Mutating a config object returned by `readConfig` (for example
+  `config.judge.baseURL = ...`) no longer poisons the shared defaults for the
+  rest of the process: `mergeConfig` deep-copies its base.
+- Error alerts and download toasts wrap or clip instead of running past the
+  popup width — long provisioning errors (like a missing oMLX admin key) were
+  single 180-column lines.
+
 ## 0.2.6 — 2026-11-21
 
 ### Security
