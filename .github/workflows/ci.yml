@@ -23,13 +23,22 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y binaryen
 
       - name: Rust format
-        run: cargo fmt --manifest-path core/Cargo.toml -- --check
+        run: |
+          for crate in packages/router/core packages/compaction/core; do
+            cargo fmt --manifest-path "$crate/Cargo.toml" -- --check
+          done
 
       - name: Rust clippy
-        run: cargo clippy --manifest-path core/Cargo.toml --all-targets -- -D warnings
+        run: |
+          for crate in packages/router/core packages/compaction/core; do
+            cargo clippy --manifest-path "$crate/Cargo.toml" --all-targets -- -D warnings
+          done
 
       - name: Rust tests
-        run: cargo test --manifest-path core/Cargo.toml
+        run: |
+          for crate in packages/router/core packages/compaction/core; do
+            cargo test --manifest-path "$crate/Cargo.toml"
+          done
 
       - name: Build wasm
         run: bun run build:wasm
@@ -39,6 +48,8 @@ jobs:
 
       - name: Wasm size gate
         run: |
-          size=$(wc -c < dist/core.wasm | tr -d ' ')
-          echo "dist/core.wasm: ${size} bytes"
-          test "$size" -le 614400
+          for wasm in packages/*/dist/core.wasm; do
+            size=$(wc -c < "$wasm" | tr -d ' ')
+            echo "$wasm: ${size} bytes"
+            test "$size" -le 614400
+          done

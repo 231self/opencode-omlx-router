@@ -30,11 +30,17 @@ jobs:
       - name: Secret scan (full history)
         run: gitleaks detect --source . --redact --no-banner --exit-code 1
 
-      - name: Rust security advisories
+      - name: Rust security advisories (router core)
         uses: rustsec/audit-check@v2
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          working-directory: core
+          working-directory: packages/router/core
+
+      - name: Rust security advisories (compaction core)
+        uses: rustsec/audit-check@v2
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          working-directory: packages/compaction/core
 
       - name: Tree and tarball secrets, dependency guard
         run: node scripts/security-check.mjs
