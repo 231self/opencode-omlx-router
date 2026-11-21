@@ -15,9 +15,11 @@ a model that will fail it.
 
 </div>
 
-> **Status: v0.2.8.** Routing, the context optimiser, subagent policy, the TUI
-> `/router` surface, per-turn timing, the CLI, and the Kilo shim are implemented
-> and tested. Design of record:
+> **Status: v0.2.8.** Routing, subagent policy, the TUI `/router` surface,
+> per-turn timing, the CLI, and the Kilo shim are implemented and tested. The
+> context optimiser moved to
+> [`@231self/opencode-compaction`](https://www.npmjs.com/package/@231self/opencode-compaction)
+> (install both for pruning). Design of record:
 > [`docs/specs/2026-11-15-opencode-omlx-router-design.md`](docs/specs/2026-11-15-opencode-omlx-router-design.md).
 
 ## Why
@@ -156,7 +158,7 @@ prompt hook
   ├─ reconcile: judge + deterministic floor (judge can raise, never lower)
   ├─ gates → score → pin → chosen model
   └─ session.switchModel(...) + write pin + decision record
-context hook (same turn)
+context hook (same turn, from @231self/opencode-compaction)
   ├─ optimiser: token estimate → prune plan → afterTokens
   └─ afterTokens feeds the next routing decision
 telemetry (after the turn)
@@ -315,6 +317,9 @@ pins` shows per-session blocks and pins, `/router debug` shows the active blocks
 and `failover.enabled: false` restores plain host behaviour.
 
 ### Context optimiser
+
+Shipped by [`@231self/opencode-compaction`](packages/compaction) — install it
+alongside the router to get pruning.
 
 When the assembled request fits, **nothing is changed** — cache-safe by
 construction. When it does not fit, the optimiser works in order and stops as

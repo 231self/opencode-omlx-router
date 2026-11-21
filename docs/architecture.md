@@ -1,42 +1,47 @@
 # Architecture
 
-`opencode-router` has three layers:
+The monorepo has three layers across three packages:
 
 ```text
 host (OpenCode V2 / Kilo, Bun)
-└── plain-JS adapter (src/)
-    ├── dist/core.wasm        Rust decision engine (pure, no I/O)
-    ├── oMLX HTTP judge       adapter-side fetch with timeout + cache
-    └── files                 config, pins, decision log
+└── plain-JS adapters (packages/*/src/)
+    ├── packages/router/dist/core.wasm       Rust routing engine (pure, no I/O)
+    ├── packages/compaction/dist/core.wasm   Rust context-optimiser engine (pure, no I/O)
+    ├── oMLX HTTP judge                      adapter-side fetch with timeout + cache
+    └── files                                config, pins, decision log (packages/shared)
 ```
 
-## Adapter
+## Packages and adapters
 
 | File | Role |
 |---|---|
-| `src/index.js` | V2 `setup` + V1 `server`; loads the core, registers hooks |
-| `src/router.js` | Turn orchestration: host state → core → judge → switchModel/pin/log |
-| `src/pool.js` | Favorites/list/available resolution and filters |
-| `src/cost.js` | Cost shape normalisation, gap filling, price-source labelling |
-| `src/pricing.js` | Public price tables (models.dev, LiteLLM): fetch, cache, lookup |
-| `src/quality.js` | Epoch + LMArena score fetch, cache, and merge |
-| `src/judge.js` | oMLX model discovery, verdict call, LRU cache, probe |
-| `src/optimiser.js` | Builds optimise requests and applies pruning plans |
-| `src/config.js` / `src/state.js` | Config seeding, atomic state files |
-| `src/telemetry.js` | Host event subscription → per-turn timing, tokens, cost |
-| `src/tui.js` | OpenCode TUI `/router` command (no server commands) |
-| `bin/omlx-router.mjs` | CLI (`opencode-model-router`) for headless/Kilo/Desktop |
+| `packages/router/src/index.js` | V2 `setup` + V1 `server`; loads the core, registers routing hooks |
+| `packages/router/src/router.js` | Turn orchestration: host state → core → judge → switchModel/pin/log |
+| `packages/router/src/pool.js` | Favorites/list/available resolution and filters |
+| `packages/router/src/pricing.js` / `quality.js` | Public price and quality tables: fetch, cache, lookup |
+| `packages/router/src/judge.js` | oMLX model discovery, verdict call, LRU cache, probe |
+| `packages/router/src/telemetry.js` | Host event subscription → per-turn timing, tokens, cost |
+| `packages/router/src/tui.js` | OpenCode TUI `/router` command (no server commands) |
+| `packages/router/bin/omlx-router.mjs` | CLI (`opencode-model-router`) for headless/Kilo/Desktop |
+| `packages/compaction/src/index.js` | V2 `context` hook + Kilo transform; the optimiser surface |
+| `packages/compaction/src/context.js` | Optimise + pin measurement, catalog limit fill-in |
+| `packages/compaction/src/optimiser.js` | Builds optimise requests and applies pruning plans |
+| `packages/shared/src/cost.js` / `tokens.js` | Cost shape normalisation, modelled cost, token measurement |
+| `packages/shared/src/config.js` / `state.js` | Config seeding, atomic state files |
+| `packages/shared/src/kilo.js` / `refs.js` | Kilo ctx shim; model-ref semantics |
 
-The adapter performs only plumbing: host API calls, HTTP, file I/O, and applying
+The adapters perform only plumbing: host API calls, HTTP, file I/O, and applying
 the core's decisions. All routing and pruning policy lives in Rust.
 
-## Core
+## Cores
 
-`core/` compiles to `wasm32-unknown-unknown` and exposes a small C ABI
-(`docs/protocol.md`). It has no imports, no clock, and no randomness: the
-adapter passes `nowMs`, pool data, pins, settings, and any judge verdict in; the
-core returns a decision, next pin, decision record, and counters, or a judge
-request. This makes it deterministic and testable with `cargo test`.
+Each `core/` compiles to `wasm32-unknown-unknown` and exposes a small C ABI
+(`docs/protocol.md`): `alloc`/`dealloc`/`result_len`/`abi_version` plus `route`
+(router) or `optimise` (compaction). They have no imports, no clock, and no
+randomness: the adapter passes `nowMs`, pool data, pins, settings, and any judge
+verdict in; the core returns a decision, next pin, decision record, and
+counters, or a judge request. This makes them deterministic and testable with
+`cargo test`.
 
 Modules:
 

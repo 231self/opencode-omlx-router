@@ -4,73 +4,86 @@
 
 | Tool | Version | Why |
 |---|---|---|
-| Bun | ≥ 1.4 | Tests and scripts |
-| Rust | stable, 1.98 tested | Core |
-| `wasm32-unknown-unknown` target | — | Core build |
+| Bun | ≥ 1.4 | Workspace install, tests and scripts |
+| Rust | stable, 1.98 tested | The two WASM cores |
+| `wasm32-unknown-unknown` target | — | Core builds |
 | binaryen (`wasm-opt`) | optional | Size optimisation; CI installs it |
-| npm trusted publisher | one-time | OIDC publish from CI: no token, no 2FA prompt |
+| npm trusted publishers | one-time, one per package | OIDC staging from CI: no token, no 2FA prompt |
 | `gh` | authenticated | Release/tag |
 
 ```sh
 rustup target add wasm32-unknown-unknown
 ```
 
+## Layout
+
+Three publishable packages in one workspace:
+
+| Package | Contents |
+|---|---|
+| `packages/shared` → `@231self/opencode-shared` | Pricing/measurement (`cost.js`, `tokens.js`), host adapters (`config.js`, `state.js`), Kilo shim, model-ref semantics. No dependencies. |
+| `packages/compaction` → `@231self/opencode-compaction` | Context optimiser plugin + its WASM core (`optimise` ABI). Depends on shared. |
+| `packages/router` → `@231self/opencode-router` | Model-selection plugin + CLI + its WASM core (`route` ABI). Depends on shared. |
+
 ## Build
 
 ```sh
-bun install                 # no runtime dependencies; creates the lockfile
-bun run build:wasm          # cargo build --release --target wasm32-unknown-unknown
-bun test                    # adapter + wasm bridge (rebuilds wasm first)
-bun run test:rust           # cargo test
-bun run check               # fmt, clippy -D warnings, both suites, size gate
+bun install                 # workspace links; no external npm dependencies
+bun run build:wasm          # both crates -> packages/*/dist/core.wasm
+bun test                    # whole workspace (rebuilds wasm first)
+bun run test:rust           # cargo test in both crates
+bun run check               # fmt + clippy -D warnings + both suites + two size gates + security gate
 ```
 
-Artifacts:
+Artifacts per WASM package: `dist/core.wasm` (committed for git installs and
+included in npm packs by `prepack`), `src/` (plain ESM, no build step). The
+router package additionally ships `bin/omlx-router.mjs` (CLI
+`opencode-model-router`, alias `omlx-router`) and `config.example.json`.
 
-- `dist/core.wasm` — the only compiled file, committed for git installs and
-  included in npm packs by `prepack`.
-- `src/` — plain ESM host adapters, no build step.
-- `bin/omlx-router.mjs` — CLI (`opencode-model-router`, alias `omlx-router`).
-
-`npm pack --dry-run` must list `dist/core.wasm`, `src/`, `bin/`, `README.md`,
-`CHANGELOG.md`, `LICENSE`, and `config.example.json`.
+`npm pack --dry-run` in each package must list exactly its `files` allowlist;
+the security gate enforces this per package.
 
 ## Version and changelog
 
-1. Bump `version` in `package.json` (and `Cargo.toml` for the core).
-2. Move the `CHANGELOG.md` section from `unreleased` to the release version.
-3. Update README install/usage if behaviour changed.
-4. `bun run check`.
-5. `bun run test:e2e` (prompt tests against OpenCode and Kilo) and, with oMLX
-   running, `bun run judge:calibrate` (real judge verdicts/latency),
-   `bun run routing:eval -- --runs 3` (routing vs an oracle; must have zero
-   under-routes), and `bun run test:e2e:live` (real judge routing).
-6. `jj describe -m "release: v0.2.8"`, `jj new`.
+Packages version independently; the release tag tracks the router's version.
+Per package:
+
+1. Bump `version` in its `package.json` and `CHANGELOG.md` section
+   (`## X.Y.Z — date`), plus `src/version.js` and, for the WASM packages,
+   `core/Cargo.toml` + `core/Cargo.lock`.
+2. Router only: `packages/router/tests/status.test.js` and the README status
+   line.
+3. Workspace siblings that depend on the bumped package should widen their
+   `dependencies` range if needed.
+4. `bun run check`, then the live checks (`bun run test:e2e`,
+   `bun run judge:calibrate`, `bun run routing:eval -- --runs 3`,
+   `bun run test:e2e:live`) as usual.
+5. `jj describe -m "release: v<router-version>"`, `jj new`.
 
 ## Publish to npm (staged, then approved)
 
 Publishing is **staged**: `.github/workflows/release.yml` runs when a GitHub
-Release is published, re-validates everything (`bun run check`), checks the tag
-against `package.json` and the changelog, and runs `npm stage publish --access
-public` over npm trusted publishing (OIDC). There is no `NPM_TOKEN` and no
-access token. The staged version is not public until a maintainer approves it
-with 2FA.
+Release is published, re-validates everything (`bun run check`), verifies the
+tag against `packages/router`, and stages every package whose version is not
+yet on npm — in dependency order (`shared` → `compaction` → `router`) — via
+`npm stage publish --access public` over npm trusted publishing (OIDC). There
+is no `NPM_TOKEN` and no access token. Nothing is public until a maintainer
+approves the staged versions with 2FA.
 
-Observe the package's publishing-access setting "Require two-factor
+Per package, on npmjs.com: publishing access "Require two-factor
 authentication and disallow bypass 2FA tokens", and in the Trusted Publisher
 section leave **Allow npm publish** unchecked — CI only needs staged
-permission.
+permission. One-time setup per package: Settings → Trusted Publisher →
+GitHub Actions → owner `231self`, repository `opencode-router`, workflow
+`release.yml` — spelling and case must match exactly. The repository must stay
+public (provenance requirement).
 
-One-time setup on [npmjs.com](https://www.npmjs.com/package/@231self/opencode-router):
-package → Settings → Trusted Publisher → GitHub Actions → owner `231self`,
-repository `opencode-router`, workflow `release.yml` — spelling and case must
-match exactly. The repository must stay public (provenance requirement).
+The first successful publish must happen within **two days** of creating each
+trusted publisher or the configuration expires; approve promptly after a
+release that introduces a new package.
 
-The first successful publish must happen within **two days** of creating the
-trusted publisher or the configuration expires; for the first release, approve
-the staged version promptly.
-
-Review and approve the staged version:
+Review and approve the staged versions — **shared first** (its dependents
+reference it in their published manifests), then compaction, then router:
 
 ```sh
 npm stage list                              # staged versions you can see
@@ -85,6 +98,8 @@ Staged publishing requires npm CLI ≥ 11.15; the workflow pins a newer one.
 Verify after approving:
 
 ```sh
+npm view @231self/opencode-shared version
+npm view @231self/opencode-compaction version
 npm view @231self/opencode-router version
 ```
 
@@ -92,44 +107,34 @@ Fallback if trusted publishing is unavailable: add an `NPM_TOKEN` secret (an
 automation token) and set `NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}` on the
 staging step. This reintroduces a long-lived credential; prefer OIDC.
 
-After the first publish under the new name, deprecate the old package:
-
-```sh
-npm deprecate @231self/opencode-omlx-router \
-  "Renamed to @231self/opencode-router"
-```
-
-The CLI exposes `opencode-model-router` plus the `omlx-router` alias.
-
 ## Tag and GitHub release
 
-This is the release: publishing the GitHub Release triggers the npm publish.
+This is the release: publishing the GitHub Release triggers the staging run.
 
 ```sh
-VERSION=$(node -p 'require("./package.json").version')
+VERSION=$(node -p 'require("./packages/router/package.json").version')
 
 jj bookmark set main -r @-
 jj git push -b main
 jj tag set "v$VERSION" -r main
 jj git push --tag "v$VERSION"
 
-sed -n "/^## $VERSION /,/^## /p" CHANGELOG.md | sed '1d;$d' > /tmp/notes.md
+sed -n "/^## $VERSION /,/^## /p" packages/router/CHANGELOG.md | sed '1d;$d' > /tmp/notes.md
 gh release create "v$VERSION" --title "v$VERSION" --notes-file /tmp/notes.md
 ```
 
-Publishing the release **stages** the version; nothing is public until you
-approve it with 2FA (see "Publish to npm" above). `ci.yml` should be green on
-the tagged commit first (rustfmt, clippy, Rust tests, wasm build, Bun tests,
-the 600 KiB size gate, the security gate), and the `release` workflow re-runs
-all of it before staging: a red check stops the release. Prereleases never
-stage (`release.yml` skips them).
+Publishing the release **stages** the packages; nothing is public until you
+approve them with 2FA (see "Publish to npm" above). `ci.yml` should be green
+on the tagged commit first, and the `release` workflow re-runs all of it
+before staging: a red check stops the release. Prereleases never stage
+(`release.yml` skips them).
 
 ## Verify the published artifact
 
 ```sh
 mkdir -p /tmp/omlx-verify && cd /tmp/omlx-verify
 npm pack @231self/opencode-router
-tar -tzf 231self-opencode-router-0.2.8.tgz | head
+tar -tzf 231self-opencode-router-*.tgz | head
 ```
 
 Then install it as a consumer (below) in a scratch project and confirm a
@@ -137,7 +142,7 @@ decision is logged in `~/.local/state/omlx-router/opencode/decisions.jsonl`.
 The prompt harness can drive the installed package directly:
 
 ```sh
-npm install ./231self-opencode-router-0.2.8.tgz
+npm install ./231self-opencode-router-*.tgz ./231self-opencode-compaction-*.tgz
 bun tests/e2e/run.mjs --only judge-cost --package "$PWD/node_modules/@231self/opencode-router"
 bun tests/e2e/run.mjs --only kilo-boundary --package "$PWD/node_modules/@231self/opencode-router"
 ```
@@ -148,6 +153,7 @@ bun tests/e2e/run.mjs --only kilo-boundary --package "$PWD/node_modules/@231self
 
 ```sh
 opencode plugin add @231self/opencode-router
+opencode plugin add @231self/opencode-compaction   # context optimiser
 ```
 
 or in `~/.config/opencode/opencode.jsonc`:
@@ -155,7 +161,7 @@ or in `~/.config/opencode/opencode.jsonc`:
 ```jsonc
 {
   "$schema": "https://opencode.ai/config.json",
-  "plugins": ["@231self/opencode-router"]
+  "plugins": ["@231self/opencode-router", "@231self/opencode-compaction"]
 }
 ```
 
@@ -192,26 +198,26 @@ bun run build:wasm
 OpenCode config:
 
 ```jsonc
-{ "plugins": ["/absolute/path/to/opencode-router"] }
+{ "plugins": ["/absolute/path/to/opencode-router/packages/router", "/absolute/path/to/opencode-router/packages/compaction"] }
 ```
 
 Kilo config:
 
 ```jsonc
-{ "plugin": ["/absolute/path/to/opencode-router/src/index.js"] }
+{ "plugin": ["/absolute/path/to/opencode-router/packages/router/src/index.js"] }
 ```
 
 ## Post-release
 
-- `gh repo edit 231self/opencode-omlx-router --add-topic ...`
-- Watch `gh run list` and `npm view @231self/opencode-router`.
-- If a bad release ships within 72 h: `npm unpublish @231self/opencode-router@x.y.z`
+- Watch `gh run list` and `npm view` for each package.
+- If a bad release ships within 72 h: `npm unpublish <name>@x.y.z`
   (avoid if possible; prefer `npm deprecate` and a patch).
 - Never reuse a published version.
 
 ## Rollback/disable for users
 
-- Disable the plugin: `opencode plugin remove @231self/opencode-router` or set
-  `"enabled": false` in `~/.config/omlx-router/config.json`.
-- The plugin never modifies host files; removing it leaves only config/state
+- Disable the plugins: `opencode plugin remove @231self/opencode-router` (and
+  `@231self/opencode-compaction`) or set `"enabled": false` in
+  `~/.config/omlx-router/config.json`.
+- The plugins never modify host files; removing them leaves only config/state
   under `~/.config/omlx-router` and `~/.local/state/omlx-router`.
