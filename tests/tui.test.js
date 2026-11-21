@@ -756,18 +756,24 @@ test("every menu and submenu popup is wrapped, aligned text without long lines",
     try {
       await command().run("judge status")
       await command().run("judge pull")
+      // The download monitor is background work; let it finish against the
+      // fake so its completion toast cannot race the assertions below.
+      await new Promise((resolve) => setTimeout(resolve, 50))
     } finally {
       globalThis.fetch = original
     }
 
     const popups = messages.filter((entry) => typeof entry.message === "string")
     expect(popups.length).toBeGreaterThan(15)
+    const overlong = []
     for (const entry of popups) {
       for (const line of String(entry.message).split("\n")) {
         // Fixture paths are long; real ones shorten to ~ under the home dir.
-        expect(line.replace(dir, "").length).toBeLessThanOrEqual(80)
+        const trimmed = line.replace(dir, "")
+        if (trimmed.length > 80) overlong.push(`${entry.kind}: ${trimmed}`)
       }
     }
+    expect(overlong).toEqual([])
     expect(popups.some((entry) => entry.kind === "confirm")).toBe(true)
 
     // Facts under one section title share a value column.

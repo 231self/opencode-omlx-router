@@ -181,6 +181,12 @@ function pinEntries(pins) {
     })
 }
 
+/** Toast text stays short: the first fragment of a possibly long error. */
+function brief(text) {
+  const value = String(text ?? "")
+  return value.length <= 60 ? value : `${value.slice(0, 59)}…`
+}
+
 function modelLabel(reference) {
   if (!reference) return "none"
   const variant = reference.variant && reference.variant !== "default" ? `#${reference.variant}` : ""
@@ -602,7 +608,7 @@ async function offerPull(context, config, repo, reason, background) {
         if (task.status === "completed") {
           void context.ui.toast.show({
             title: "OpenCode Router",
-            message: `${task.repo_id} downloaded; run /router judge to verify`,
+            message: `${String(task.repo_id).split("/").pop()} downloaded; run /router judge to verify`,
             variant: "success",
             duration: 8000,
           })
@@ -610,7 +616,7 @@ async function offerPull(context, config, repo, reason, background) {
         if (task.status === "failed" || task.status === "cancelled") {
           void context.ui.toast.show({
             title: "OpenCode Router",
-            message: `download ${task.status}: ${task.error || "no detail"}`,
+            message: `download ${task.status}: ${brief(task.error || "no detail")}`,
             variant: "error",
             duration: 8000,
           })
@@ -620,7 +626,7 @@ async function offerPull(context, config, repo, reason, background) {
     .catch((error) => {
       void context.ui.toast.show({
         title: "OpenCode Router",
-        message: `download monitor stopped: ${error?.message ?? error}`,
+        message: `download monitor stopped: ${brief(error?.message ?? error)}`,
         variant: "error",
       })
     })
