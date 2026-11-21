@@ -1,8 +1,10 @@
 name: release
 
-# Publishing is triggered by publishing a GitHub Release. The npm auth is
-# trusted publishing (OIDC): no NPM_TOKEN, no access token, no 2FA prompt.
-# Configure the trusted publisher once on npmjs.com (see docs/releasing.md).
+# Publishing is triggered by publishing a GitHub Release. CI validates and
+# STAGES the version over npm trusted publishing (OIDC) — no NPM_TOKEN, no
+# access token. A maintainer then reviews and approves the staged version
+# with 2FA (npm stage approve, or the Staged Packages tab on npmjs.com), so
+# nothing reaches the registry without a human decision.
 on:
   release:
     types: [published]
@@ -12,7 +14,7 @@ permissions:
   contents: read
 
 jobs:
-  publish:
+  stage:
     runs-on: ubuntu-latest
     if: ${{ !github.event.release.prerelease }}
     steps:
@@ -29,11 +31,16 @@ jobs:
       - name: Install binaryen
         run: sudo apt-get update && sudo apt-get install -y binaryen
 
-      # Node 24 ships npm 11+, which speaks the OIDC handshake.
+      # Base image for the runner; npm itself is pinned below.
       - uses: actions/setup-node@v4
         with:
           node-version: "24"
           registry-url: "https://registry.npmjs.org"
+
+      # Staged publishing needs npm >= 11.15 and the OIDC flow needs >= 11.5.1.
+      # Pinned deliberately: bump it together with reading the npm changelog.
+      - name: Pin npm
+        run: npm install -g npm@12.2.3 && npm --version
 
       - name: Verify the release matches the package
         env:
@@ -46,5 +53,5 @@ jobs:
       - name: Full check gate
         run: bun run check
 
-      - name: Publish to npm (OIDC, provenance attached)
-        run: npm publish --access public
+      - name: Stage the version for approval (OIDC, provenance attached)
+        run: npm stage publish --access public

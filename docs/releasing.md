@@ -47,29 +47,50 @@ Artifacts:
    under-routes), and `bun run test:e2e:live` (real judge routing).
 6. `jj describe -m "release: v0.2.7"`, `jj new`.
 
-## Publish to npm
+## Publish to npm (staged, then approved)
 
-Publishing happens from CI: `.github/workflows/release.yml` runs when a GitHub
+Publishing is **staged**: `.github/workflows/release.yml` runs when a GitHub
 Release is published, re-validates everything (`bun run check`), checks the tag
-against `package.json` and the changelog, and runs `npm publish` over npm
-trusted publishing (OIDC). There is no `NPM_TOKEN`, no access token, and no
-2FA prompt anywhere in the flow; the publish also carries a signed provenance
-attestation.
+against `package.json` and the changelog, and runs `npm stage publish --access
+public` over npm trusted publishing (OIDC). There is no `NPM_TOKEN` and no
+access token. The staged version is not public until a maintainer approves it
+with 2FA.
+
+Observe the package's publishing-access setting "Require two-factor
+authentication and disallow bypass 2FA tokens", and in the Trusted Publisher
+section leave **Allow npm publish** unchecked — CI only needs staged
+permission.
 
 One-time setup on [npmjs.com](https://www.npmjs.com/package/@231self/opencode-router):
 package → Settings → Trusted Publisher → GitHub Actions → owner `231self`,
 repository `opencode-router`, workflow `release.yml` — spelling and case must
 match exactly. The repository must stay public (provenance requirement).
 
-Fallback if trusted publishing is unavailable: add an `NPM_TOKEN` secret (an
-automation token) and set `NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}` on the
-publish step. This reintroduces a long-lived credential; prefer OIDC.
+The first successful publish must happen within **two days** of creating the
+trusted publisher or the configuration expires; for the first release, approve
+the staged version promptly.
 
-Verify after a release:
+Review and approve the staged version:
+
+```sh
+npm stage list                              # staged versions you can see
+npm stage view <stage-id>                   # metadata before you approve
+npm stage download <stage-id>               # inspect the tarball
+npm stage approve <stage-id>                # 2FA prompt; publishes it
+```
+
+Or open npmjs.com → Staged Packages and approve there (same 2FA challenge).
+Staged publishing requires npm CLI ≥ 11.15; the workflow pins a newer one.
+
+Verify after approving:
 
 ```sh
 npm view @231self/opencode-router version
 ```
+
+Fallback if trusted publishing is unavailable: add an `NPM_TOKEN` secret (an
+automation token) and set `NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}` on the
+staging step. This reintroduces a long-lived credential; prefer OIDC.
 
 After the first publish under the new name, deprecate the old package:
 
@@ -96,10 +117,12 @@ sed -n "/^## $VERSION /,/^## /p" CHANGELOG.md | sed '1d;$d' > /tmp/notes.md
 gh release create "v$VERSION" --title "v$VERSION" --notes-file /tmp/notes.md
 ```
 
-`ci.yml` should be green on the tagged commit first (rustfmt, clippy, Rust
-tests, wasm build, Bun tests, the 600 KiB size gate, the security gate), and
-the `release` workflow re-runs all of it before publishing: a red check stops
-the release. Prereleases never publish (`release.yml` skips them).
+Publishing the release **stages** the version; nothing is public until you
+approve it with 2FA (see "Publish to npm" above). `ci.yml` should be green on
+the tagged commit first (rustfmt, clippy, Rust tests, wasm build, Bun tests,
+the 600 KiB size gate, the security gate), and the `release` workflow re-runs
+all of it before staging: a red check stops the release. Prereleases never
+stage (`release.yml` skips them).
 
 ## Verify the published artifact
 
