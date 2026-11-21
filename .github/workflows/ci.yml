@@ -15,6 +15,9 @@ jobs:
         with:
           bun-version: latest
 
+      - name: Install workspace
+        run: bun install --frozen-lockfile
+
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: wasm32-unknown-unknown
