@@ -1,5 +1,5 @@
 import { readConfig } from "./config.js"
-import { Judge } from "./judge.js"
+import { Judge, readJudgeNoise } from "./judge.js"
 import { resolvePool } from "./pool.js"
 import { loadPricing } from "./pricing.js"
 import { loadQualityScores } from "./quality.js"
@@ -183,6 +183,16 @@ function cacheHitRatioFor({ host, env, hash, pin, fallback }) {
   const pinned = `${pin.model.providerID}/${pin.model.id ?? pin.model.modelID}`
   if (last.usedModel !== pinned) return 0
   return Math.min(0.95, cacheHitShare(last.tokens))
+}
+
+/** A calibration only speaks for the judge it was measured against. */
+function judgeNoiseMatches(noise, judgeConfig) {
+  if (!noise?.band) return false
+  const base = (value) => String(value ?? "").replace(/\/+$/, "")
+  return (
+    base(noise.baseURL) === base(judgeConfig?.baseURL) &&
+    (noise.requested ?? "auto") === (judgeConfig?.model ?? "auto")
+  )
 }
 
 /**
@@ -371,6 +381,11 @@ export class Router {
         pin,
         fallback: Number.isFinite(Number(config.pin?.cacheHitRatio)) ? Number(config.pin.cacheHitRatio) : 0.8,
       })
+      // A score gap inside the judge's calibrated spread is verdict noise, not
+      // a reason to switch: floor the hysteresis at the measured band.
+      const noise = readJudgeNoise(this.env)
+      const noiseBand = judgeNoiseMatches(noise, config.judge) ? Number(noise.band) || 0 : 0
+      const switchThreshold = Math.max(Number(config.pin?.switchThreshold) || 0, noiseBand)
       const request = {
         abi: 1,
         nowMs: Date.now(),
@@ -395,7 +410,10 @@ export class Router {
           turnClassHint: null,
         },
         pool: eligible,
-        settings: { ...config, pin: { ...config.pin, cacheHitRatio } },
+        settings: {
+          ...config,
+          pin: { ...config.pin, cacheHitRatio, switchThreshold },
+        },
         pin: completed && !pin?.forced ? null : pinForRequest(pin),
         judge: { verdict: null, cached: false, unavailable: false },
         stats,

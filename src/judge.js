@@ -1,4 +1,8 @@
+import fs from "node:fs"
+import path from "node:path"
+
 import { resolveSecret } from "./config.js"
+import { stateRoot, writeJsonAtomic } from "./state.js"
 
 export class JudgeError extends Error {
   constructor(message) {
@@ -17,6 +21,47 @@ export function paramBillions(label) {
     if (Number.isFinite(value)) best = best === null ? value : Math.max(best, value)
   }
   return best
+}
+
+/**
+ * Judge noise calibration: how far re-judged verdicts move the score gap
+ * between an incumbent and its best challenger. Measured by
+ * `bun run judge:calibrate` (re-sampled verdicts per case), stored here, and
+ * used by the router to floor `pin.switchThreshold` — a gap inside the judge's
+ * own spread must not flip the model.
+ */
+export function judgeNoisePath(env = process.env) {
+  return env.OMLX_ROUTER_JUDGE_NOISE || path.join(stateRoot(env), "judge-noise.json")
+}
+
+export function readJudgeNoise(env = process.env) {
+  try {
+    return JSON.parse(fs.readFileSync(judgeNoisePath(env), "utf8"))
+  } catch {
+    return null
+  }
+}
+
+export function writeJudgeNoise(value, env = process.env) {
+  writeJsonAtomic(judgeNoisePath(env), value)
+  return value
+}
+
+/** Peak-to-peak movement of one case's score-gap samples. */
+export function gapSpread(gaps) {
+  const values = (Array.isArray(gaps) ? gaps : []).map(Number).filter(Number.isFinite)
+  if (values.length < 2) return 0
+  return Math.max(...values) - Math.min(...values)
+}
+
+/**
+ * The noise band from per-case gap samples: the widest movement observed in
+ * any one case, clamped to [0, 0.5].
+ */
+export function verdictNoiseBand(caseGaps) {
+  let band = 0
+  for (const gaps of caseGaps ?? []) band = Math.max(band, gapSpread(gaps))
+  return Math.min(0.5, Math.round(band * 1e6) / 1e6)
 }
 
 function extractJson(text) {

@@ -4,6 +4,7 @@ import os from "node:os"
 import path from "node:path"
 
 import { readConfig, saveConfig } from "../src/config.js"
+import { writeJudgeNoise } from "../src/judge.js"
 import { Router, cooldownFor, isFailoverError, isProviderWide } from "../src/router.js"
 import { appendDecision, appendTurn, readDecisions, readPin, sessionHash, writePin } from "../src/state.js"
 
@@ -715,4 +716,42 @@ test("a configured zero keeps the cache discount off", async () => {
   )
   await router.prompt({ sessionID: "ses_1", prompt: { text: "hi" } })
   expect(requests.at(-1).settings.pin.cacheHitRatio).toBe(0)
+})
+
+test("the switch threshold floors at the calibrated judge noise band", async () => {
+  const env = tempEnv()
+  const requests = []
+  const { router } = harness({
+    env,
+    core: {
+      route(request) {
+        requests.push(request)
+        return decisionResponse()
+      },
+    },
+  })
+
+  // A band above the configured threshold widens the hysteresis.
+  writeJudgeNoise(
+    { band: 0.3, requested: "auto", baseURL: "http://127.0.0.1:1234/v1" },
+    env,
+  )
+  await router.prompt({ sessionID: "ses_1", prompt: { text: "hi" } })
+  expect(requests.at(-1).settings.pin.switchThreshold).toBeCloseTo(0.3, 6)
+
+  // A band below it leaves the configured threshold alone.
+  writeJudgeNoise(
+    { band: 0.05, requested: "auto", baseURL: "http://127.0.0.1:1234/v1" },
+    env,
+  )
+  await router.prompt({ sessionID: "ses_1", prompt: { text: "again" } })
+  expect(requests.at(-1).settings.pin.switchThreshold).toBeCloseTo(0.12, 6)
+
+  // A calibration for another judge model does not apply.
+  writeJudgeNoise(
+    { band: 0.3, requested: "other-judge", baseURL: "http://127.0.0.1:1234/v1" },
+    env,
+  )
+  await router.prompt({ sessionID: "ses_1", prompt: { text: "third" } })
+  expect(requests.at(-1).settings.pin.switchThreshold).toBeCloseTo(0.12, 6)
 })

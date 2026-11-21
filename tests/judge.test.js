@@ -1,6 +1,17 @@
 import { expect, test } from "bun:test"
+import fs from "node:fs"
+import os from "node:os"
+import path from "node:path"
 
-import { Judge, JudgeError } from "../src/judge.js"
+import {
+  Judge,
+  JudgeError,
+  gapSpread,
+  judgeNoisePath,
+  readJudgeNoise,
+  verdictNoiseBand,
+  writeJudgeNoise,
+} from "../src/judge.js"
 
 function jsonResponse(value, status = 200) {
   return new Response(JSON.stringify(value), {
@@ -105,4 +116,21 @@ test("timeouts surface as JudgeError", async () => {
     })
   const judge = new Judge({ config: { model: "m", timeoutMs: 10 }, fetchImpl })
   await expect(judge.verdict({ prompt: "classify" })).rejects.toThrow(/timeout/)
+})
+
+test("the noise band is the widest per-case gap movement", () => {
+  expect(gapSpread([0.1, 0.13, 0.08])).toBeCloseTo(0.05, 6)
+  expect(verdictNoiseBand([[0.1, 0.13, 0.08], [0.4, 0.52]])).toBeCloseTo(0.12, 6)
+  expect(verdictNoiseBand([[0.1]])).toBe(0)
+  expect(verdictNoiseBand([])).toBe(0)
+  expect(verdictNoiseBand([[0, 10]])).toBe(0.5)
+})
+
+test("the judge noise artifact round-trips", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "omlx-router-noise-"))
+  const env = { OMLX_ROUTER_JUDGE_NOISE: path.join(dir, "judge-noise.json") }
+  expect(judgeNoisePath(env)).toBe(path.join(dir, "judge-noise.json"))
+  expect(readJudgeNoise(env)).toBeNull()
+  writeJudgeNoise({ band: 0.12, requested: "auto" }, env)
+  expect(readJudgeNoise(env)).toEqual({ band: 0.12, requested: "auto" })
 })

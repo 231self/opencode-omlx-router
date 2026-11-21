@@ -155,9 +155,12 @@ function isPlainObject(value) {
 /** Recursive merge where `override` wins; arrays and scalars replace. */
 export function mergeConfig(base, override) {
   if (!isPlainObject(override)) return override === undefined ? structuredClone(base) : override
-  const out = { ...base }
+  // Deep-copy `base` so the result never shares references with the defaults:
+  // callers may mutate their config (e.g. config.judge.baseURL = ...) and must
+  // not corrupt DEFAULT_CONFIG for the rest of the process.
+  const out = structuredClone(base)
   for (const [key, value] of Object.entries(override)) {
-    out[key] = isPlainObject(value) && isPlainObject(base?.[key]) ? mergeConfig(base[key], value) : value
+    out[key] = isPlainObject(value) && isPlainObject(out[key]) ? mergeConfig(out[key], value) : value
   }
   return out
 }

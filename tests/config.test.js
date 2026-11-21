@@ -114,3 +114,15 @@ test("zero policy weights fall back to the preset", () => {
   const config = { policy: "cost", policyWeights: { cost: 0, quality: 0, latency: 0 } }
   expect(resolvePolicyWeights(config)).toEqual({ cost: 0.6, quality: 0.3, latency: 0.1 })
 })
+
+test("a read config never shares references with the defaults", () => {
+  const { env } = tempEnv()
+  const first = readConfig({ env, write: true }).config
+  first.judge.baseURL = "http://mutated.test/v1"
+  first.pool.models.push("someone/model")
+  expect(DEFAULT_CONFIG.judge.baseURL).toBe("http://127.0.0.1:1234/v1")
+  expect(DEFAULT_CONFIG.pool.models).toEqual([])
+  const second = readConfig({ env, write: true }).config
+  expect(second.judge.baseURL).toBe("http://127.0.0.1:1234/v1")
+  expect(second.pool.models).toEqual([])
+})
