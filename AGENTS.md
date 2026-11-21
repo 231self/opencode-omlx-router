@@ -35,8 +35,37 @@ bookmark. Pass `-m` to every describe/commit; never use interactive flags.
 bun run build:wasm     # cargo build --release --target wasm32-unknown-unknown
 bun test               # adapter + WASM bridge
 bun run test:rust      # cargo test
-bun run check          # fmt + clippy + tests + wasm size gate
+bun run check          # fmt + clippy + tests + wasm size gate + security gate
+bun run security       # secret scan of the tree and the published tarball
 ```
+
+Live-only checks (need oMLX and provider keys): `bun run test:e2e`,
+`bun run test:e2e:live`, `bun run judge:calibrate --repeat 3` (writes the
+verdict-noise band), `bun run routing:eval`, `bun run quality:eval`.
+
+## Releasing
+
+Publishing happens from CI on a GitHub Release, over npm trusted publishing
+(OIDC). Never publish manually and never commit an npm token.
+
+1. Bump the version in `package.json`, `src/version.js`, `core/Cargo.toml` +
+   `core/Cargo.lock`, `tests/status.test.js`, the README status line, and
+   `docs/releasing.md`. Add the `CHANGELOG.md` section for the version.
+2. `bun run check`, commit, push `main`, and wait for `ci` and `security` to
+   pass.
+3. `jj tag set vX.Y.Z -r main` and `jj git push --tag vX.Y.Z`.
+4. Create the GitHub Release with notes extracted from the changelog section.
+   Publishing the release triggers `.github/workflows/release.yml`, which
+   re-runs `bun run check`, verifies the tag against the package and changelog,
+   and runs `npm stage publish --access public`. A red check stops it; nothing
+   reaches the registry yet.
+5. Approve the staged version with 2FA: `npm stage list`, then
+   `npm stage approve <stage-id>` (or npmjs.com → Staged Packages → Approve).
+   The first publish after creating a trusted-publisher config must be approved
+   within 2 days or the config expires; re-create it if that happens.
+
+The full runbook, including verification and rollback, is
+`docs/releasing.md`.
 
 ## Design and docs
 
