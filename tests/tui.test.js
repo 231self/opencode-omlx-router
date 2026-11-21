@@ -661,7 +661,12 @@ test("every menu and submenu popup is wrapped, aligned text without long lines",
     saveConfig({
       ...config,
       pool: { ...config.pool, source: "list", models: ["deepseek/deepseek-flash"] },
-      judge: { ...config.judge, baseURL: "http://127.0.0.1:9/v1", timeoutMs: 250 },
+      judge: {
+        ...config.judge,
+        baseURL: "http://127.0.0.1:9/v1",
+        timeoutMs: 250,
+        provision: { ...config.judge.provision, adminApiKey: "test-admin-key", readSettingsKey: false },
+      },
     })
     writePin("opencode", "ses_pin", {
       model: { providerID: "deepseek", id: "deepseek-flash", variant: "default" },
@@ -786,5 +791,39 @@ test("every menu and submenu popup is wrapped, aligned text without long lines",
     }
   } finally {
     process.env.HOME = previousHome
+  }
+})
+
+test("long error alerts wrap and keep the detail", async () => {
+  environment()
+  const config = readConfig({ write: true }).config
+  saveConfig({
+    ...config,
+    judge: {
+      ...config.judge,
+      baseURL: "http://omlx.test/v1",
+      // No admin key from any source: the provisioning errors are long text
+      // and must still respect the popup width.
+      provision: { ...config.judge.provision, adminApiKey: "", readSettingsKey: false },
+    },
+  })
+  const { context, messages, command } = fakeContext()
+  tui.setup(context)
+  const fake = fakeAdminFetch()
+  const original = globalThis.fetch
+  globalThis.fetch = fake.fetchImpl
+  try {
+    await command().run("judge status")
+    await command().run("judge pull")
+  } finally {
+    globalThis.fetch = original
+  }
+  const alerts = messages.filter((entry) => entry.kind === "alert")
+  expect(alerts.length).toBeGreaterThan(1)
+  for (const entry of alerts) {
+    for (const line of String(entry.message).split("\n")) {
+      expect(line.length).toBeLessThanOrEqual(80)
+    }
+    expect(entry.message).toContain("adminApiKey")
   }
 })

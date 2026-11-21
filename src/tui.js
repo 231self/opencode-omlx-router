@@ -125,7 +125,7 @@ async function showUsage(context, name, detail) {
   if (detail) lines.push(detail, "")
   if (entry) lines.push(entry.detail)
   lines.push(`usage: ${usageLine(name)}`)
-  await show(context, lines.join("\n"))
+  await show(context, prose(...lines))
 }
 
 function currentSession(context) {
@@ -584,7 +584,7 @@ async function offerPull(context, config, repo, reason, background) {
       },
     })
   } catch (error) {
-    await show(context, `cannot prepare download: ${error?.message ?? error}`)
+    await show(context, prose(`cannot prepare download: ${error?.message ?? error}`))
     return
   }
 
@@ -642,7 +642,7 @@ async function judgeTasks(context, config) {
     }
     await show(context, join(section("downloads", tasks.map(taskEntry))))
   } catch (error) {
-    await show(context, `cannot read downloads: ${error?.message ?? error}`)
+    await show(context, prose(`cannot read downloads: ${error?.message ?? error}`))
   }
 }
 
@@ -665,7 +665,7 @@ async function cancelJudgeTask(context, config, taskID) {
     await provision.cancel(target.task_id)
     await context.ui.toast.show({ title: "OpenCode Router", message: "download cancelled", variant: "success" })
   } catch (error) {
-    await show(context, `cannot cancel download: ${error?.message ?? error}`)
+    await show(context, prose(`cannot cancel download: ${error?.message ?? error}`))
   }
 }
 
@@ -873,7 +873,7 @@ async function runCommand(context, input) {
           const cache = await refreshPricing({ config })
           await show(context, `pricing refreshed · ${cache.count} models (${cache.source})`)
         } catch (error) {
-          await show(context, `pricing refresh failed: ${error?.message ?? error}`)
+          await show(context, prose(`pricing refresh failed: ${error?.message ?? error}`))
         }
         return
       }
@@ -928,7 +928,7 @@ async function runCommand(context, input) {
           const names = Object.keys(cache.sources ?? {}).join(" + ")
           await show(context, `quality refreshed · ${cache.count} models (${names || "none"})`)
         } catch (error) {
-          await show(context, `quality refresh failed: ${error?.message ?? error}`)
+          await show(context, prose(`quality refresh failed: ${error?.message ?? error}`))
         }
         return
       }
@@ -1111,7 +1111,7 @@ async function runCommand(context, input) {
           ),
         )
       } catch (error) {
-        await show(context, `judge unavailable: ${error?.message ?? error}`)
+        await show(context, prose(`judge unavailable: ${error?.message ?? error}`))
       }
       return
     }
@@ -1159,7 +1159,7 @@ async function runCommand(context, input) {
       return
     }
     default:
-      await show(context, `unknown command: ${command}. Try /router help`)
+      await show(context, prose(`unknown command: ${command}. Try /router help`))
   }
 }
 
@@ -1243,7 +1243,7 @@ export default {
             try {
               await runCommand(context, input)
             } catch (error) {
-              await show(context, `router error: ${error?.message ?? error}`)
+              await show(context, prose(`router error: ${error?.message ?? error}`))
             }
           },
         },
