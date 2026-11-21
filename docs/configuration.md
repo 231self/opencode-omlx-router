@@ -147,13 +147,13 @@ eligible model or provider in the pool.
 | Key | Default | Notes |
 |---|---|---|
 | `mode` | `"balanced"` | `cache` (sticky), `balanced` (default), or `switch` (best every turn) |
-| `switchThreshold` | `0.12` | Keep the incumbent unless the challenger wins by more |
+| `switchThreshold` | `0.12` | Keep the incumbent unless the challenger wins by more; floored at the judge's calibrated verdict-noise band when one has been measured (`bun run judge:calibrate`) |
 | `idleTtlMs` | `300000` | Re-route after this much idle time |
 | `maxAgeMs` | `1800000` | Release a pin after 30 minutes even while active |
 | `maxTurns` | `8` | Reconsider a pin after this many turns |
 | `costSwitchRatio` | `4` | Switch when the incumbent costs more than 4× an adequate challenger |
 | `flipFlopTurns` | `3` | Do not switch back to a model used in the last N turns |
-| `cacheHitRatio` | `0.8` | Assumed cache-read share when costing a pinned model |
+| `cacheHitRatio` | `0.8` | Assumed cache-read share when costing a pinned model and nothing is measured yet. Once the session has logged turns, the pinned model's measured share from its last turn is used instead; a pin that has not served a turn is priced cold. `0` disables the discount |
 
 ## `optimiser`
 

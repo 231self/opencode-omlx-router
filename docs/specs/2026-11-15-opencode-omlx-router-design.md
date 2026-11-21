@@ -387,9 +387,13 @@ when shortfall > `limits.shortfallTolerance` (0.20).
 
 Cost: applicable cost tier for expected input (`lastContextTokens +
 promptTokens`) × input price + `expectedOutputTokens` (default 1200; 8% of
-context on agentic turns) × output price. When pinned and the provider supports
-prompt cache keys, charge `pin.cacheHitRatio` (0.8) of context at the cache-read
-price.
+context on agentic turns) × output price. When pinned, charge the cache-read
+share of context at the cache-read price: the measured share of the session's
+last turn when the pinned model served it, `0` when the pin has not earned a
+cache (another model served the last turn), or `pin.cacheHitRatio` (0.8) when
+nothing is measurable. The share is `cache.read ÷ (input + cache.read +
+cache.write)` — provider usage reports cached tokens apart from `input`, which
+covers only cache misses, verified against recorded turn costs.
 
 Latency score: local 1.0; otherwise `latency.overrides` or `1 −
 pricePercentile` (cheap ≈ fast).
@@ -418,8 +422,11 @@ Pin state per session:
  "source": "route", "forced": false}
 ```
 
-- Keep when the pin clears gates, `best − pinned ≤ pin.switchThreshold` (0.12),
-  the turn class is unchanged, idle < `pin.idleTtlMs` (5 min), and not forced.
+- Keep when the pin clears gates, `best − pinned ≤ pin.switchThreshold` (0.12,
+  floored at the judge's calibrated verdict-noise band when one has been
+  measured, so a score gap inside the judge's own spread cannot flip the
+  model), the turn class is unchanged, idle < `pin.idleTtlMs` (5 min), and not
+  forced.
 - Hard switch on gate failure, an **upward** complexity jump ≥ 2, loop
   escalation, context overflow, policy change, or pin expiry. A downward jump is
   a normal de-escalation governed by the threshold.

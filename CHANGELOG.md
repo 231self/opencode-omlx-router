@@ -2,6 +2,29 @@
 
 ## 0.2.6 — 2026-11-21
 
+### Added
+
+- The incumbent is priced with the **measured** cache-hit share of the
+  session's last turn (verified against recorded provider costs: cached tokens
+  are reported apart from `input`, which covers only cache misses). A pin that
+  has not served a turn yet is priced cold — it has earned no cache — and
+  `pin.cacheHitRatio` (0.8) remains the fallback when nothing is measurable
+  and the hard off switch at 0.
+- `bun run judge:calibrate --repeat n` re-samples verdicts, pushes each one
+  through the core's scoring, and stores the widest score-gap movement as a
+  verdict-noise band. `pin.switchThreshold` is floored at that band, so a gap
+  inside the judge's own spread cannot flip the model (the flip-flop turn
+  guard stays). Measured on a local Qwen3-4B over 18 re-sampled verdicts:
+  zero movement — the floor is a no-op for deterministic judges and matters
+  for noisy ones.
+- The benchmark reports now include two sensitivity sweeps over the cache-hit
+  assumption (rescoring fixed decisions and re-running the router) and
+  measured judge wall-clock next to the modelled dollars. The long suite
+  crosses over: at 50% reuse switching every turn is 14% cheaper than keeping
+  the incumbent, at 95% keeping is 9% cheaper, and the documented 80% default
+  sits near the crossover — the two retention modes are cost-neutral there
+  within the assumption's own sensitivity.
+
 ### Changed
 
 - Every `/router` popup — menus and subcommands alike — is now labelled,

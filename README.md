@@ -230,7 +230,9 @@ and review floored at 3. Trivial turns skip the judge entirely.
    15% context percentile, 15% reasoning support. Overrides win; free local
    models default to 0.35.
 4. **Expected cost.** Input plus expected output at the model's context tier,
-   with a cache-read discount (`pin.cacheHitRatio`, default 0.8).
+   with a cache-read discount: the measured cache-hit share of the session's
+   last turn when the pinned model served it (a fresh pin is priced cold), or
+   `pin.cacheHitRatio` (0.8) when nothing is measured yet.
 5. **Policy weights.**
 
 | Policy | Cost | Quality | Latency | Use when |
@@ -621,7 +623,8 @@ the table.
 
 Modelled costs from published per-million-token prices, decisions from the real
 WASM core with recorded verdicts, and an 80% cache-read assumption on repeated
-turns. These measure routing and cost, not answer quality.
+turns (swept at 50/80/95% in each report). These measure routing and cost, not
+answer quality.
 
 | Scenario | Short session (10 turns, 7k–34k) | Long session (24 turns, 12k–208k) |
 |---|---:|---:|
@@ -631,10 +634,20 @@ turns. These measure routing and cost, not answer quality.
 | Static complexity tiers | $0.690 (-23%) · 10/10 | $8.020 (+19%) · 24/24 |
 | Fixed cheap model | $0.027 · 6/10 | $0.252 · 14/24 |
 
-The short session favours `switch`; the long session favours `cache` or
-`balanced`, because repeated cold prefills at 200k cost more than keeping the
-incumbent cached. The router pool in both suites includes a local 27B and 4B at
-zero cost.
+At the 80% assumption the two retention modes are effectively cost-neutral in
+the long session (0.5% — inside the assumption's own sensitivity), and `switch`
+is 8% cheaper in the short one. The sensitivity sweep in each report explains
+why: the long session crosses over. At 50% cache reuse, switching every turn is
+14% cheaper than keeping the incumbent; at 95% reuse, keeping is 9% cheaper.
+The 80% default sits near that crossover. `cache` mode pays for its protection
+($5.431 long). These are scenario results at one price table — read them as an
+operating envelope, not a ranking. The router pool in both suites includes a
+local 27B and 4B at zero cost.
+
+Judge wall-clock is reported next to the dollars in each report. Measured on
+real usage: the judge is consulted on 36% of turns — kept pins, manual pins,
+and deterministic turns skip it — and fresh calls average 1.2 s (p95 1.5 s) on
+a local Qwen3-4B.
 
 Full method and caveats:
 [short session](docs/benchmarks/2026-11-17-routing.md) ·
