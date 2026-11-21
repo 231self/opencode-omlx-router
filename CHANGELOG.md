@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.2.8 — 2026-11-21
+
+### Changed
+
+- No code changes since 0.2.7. This release exists to validate the CI release
+  pipeline: it is staged by GitHub Actions over npm trusted publishing (OIDC)
+  and approved with 2FA, so it carries a signed provenance attestation
+  (0.2.7 was published manually and has none). Behaviour is identical to
+  0.2.7.
+
 ## 0.2.7 — 2026-11-21
 
 ### Added

@@ -45,7 +45,7 @@ Artifacts:
    running, `bun run judge:calibrate` (real judge verdicts/latency),
    `bun run routing:eval -- --runs 3` (routing vs an oracle; must have zero
    under-routes), and `bun run test:e2e:live` (real judge routing).
-6. `jj describe -m "release: v0.2.7"`, `jj new`.
+6. `jj describe -m "release: v0.2.8"`, `jj new`.
 
 ## Publish to npm (staged, then approved)
 
@@ -129,7 +129,7 @@ stage (`release.yml` skips them).
 ```sh
 mkdir -p /tmp/omlx-verify && cd /tmp/omlx-verify
 npm pack @231self/opencode-router
-tar -tzf 231self-opencode-router-0.2.7.tgz | head
+tar -tzf 231self-opencode-router-0.2.8.tgz | head
 ```
 
 Then install it as a consumer (below) in a scratch project and confirm a
@@ -137,7 +137,7 @@ decision is logged in `~/.local/state/omlx-router/opencode/decisions.jsonl`.
 The prompt harness can drive the installed package directly:
 
 ```sh
-npm install ./231self-opencode-router-0.2.7.tgz
+npm install ./231self-opencode-router-0.2.8.tgz
 bun tests/e2e/run.mjs --only judge-cost --package "$PWD/node_modules/@231self/opencode-router"
 bun tests/e2e/run.mjs --only kilo-boundary --package "$PWD/node_modules/@231self/opencode-router"
 ```
