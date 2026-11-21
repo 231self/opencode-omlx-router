@@ -8,7 +8,7 @@
 | Rust | stable, 1.98 tested | Core |
 | `wasm32-unknown-unknown` target | — | Core build |
 | binaryen (`wasm-opt`) | optional | Size optimisation; CI installs it |
-| npm account | — | Publish rights for `@231self/opencode-router` |
+| npm trusted publisher | one-time | OIDC publish from CI: no token, no 2FA prompt |
 | `gh` | authenticated | Release/tag |
 
 ```sh
@@ -49,17 +49,27 @@ Artifacts:
 
 ## Publish to npm
 
-The release is `@231self/opencode-router@0.2.7` (2026-11-21).
+Publishing happens from CI: `.github/workflows/release.yml` runs when a GitHub
+Release is published, re-validates everything (`bun run check`), checks the tag
+against `package.json` and the changelog, and runs `npm publish` over npm
+trusted publishing (OIDC). There is no `NPM_TOKEN`, no access token, and no
+2FA prompt anywhere in the flow; the publish also carries a signed provenance
+attestation.
+
+One-time setup on [npmjs.com](https://www.npmjs.com/package/@231self/opencode-router):
+package → Settings → Trusted Publisher → GitHub Actions → owner `231self`,
+repository `opencode-router`, workflow `release.yml` — spelling and case must
+match exactly. The repository must stay public (provenance requirement).
+
+Fallback if trusted publishing is unavailable: add an `NPM_TOKEN` secret (an
+automation token) and set `NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}` on the
+publish step. This reintroduces a long-lived credential; prefer OIDC.
+
+Verify after a release:
 
 ```sh
-npm login                       # or set NPM_TOKEN for CI publishing
-npm whoami
-npm publish --access public     # runs prepack -> build:wasm
 npm view @231self/opencode-router version
 ```
-
-2FA: use an automation token or answer the OTP prompt interactively. Never
-commit a token.
 
 After the first publish under the new name, deprecate the old package:
 
@@ -72,17 +82,24 @@ The CLI exposes `opencode-model-router` plus the `omlx-router` alias.
 
 ## Tag and GitHub release
 
+This is the release: publishing the GitHub Release triggers the npm publish.
+
 ```sh
+VERSION=$(node -p 'require("./package.json").version')
+
 jj bookmark set main -r @-
 jj git push -b main
-jj tag set v0.2.7 -r main
-jj git push --tag v0.2.7
-gh release create v0.2.7 --title v0.2.7 --notes-file CHANGELOG.md
+jj tag set "v$VERSION" -r main
+jj git push --tag "v$VERSION"
+
+sed -n "/^## $VERSION /,/^## /p" CHANGELOG.md | sed '1d;$d' > /tmp/notes.md
+gh release create "v$VERSION" --title "v$VERSION" --notes-file /tmp/notes.md
 ```
 
-CI (`.github/workflows/ci.yml`) must be green first: rustfmt, clippy, Rust
-tests, wasm build with `wasm-opt` feature flags, Bun tests, and the 600 KiB size
-gate.
+`ci.yml` should be green on the tagged commit first (rustfmt, clippy, Rust
+tests, wasm build, Bun tests, the 600 KiB size gate, the security gate), and
+the `release` workflow re-runs all of it before publishing: a red check stops
+the release. Prereleases never publish (`release.yml` skips them).
 
 ## Verify the published artifact
 
